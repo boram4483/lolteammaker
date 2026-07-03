@@ -375,7 +375,8 @@ function renderRoster(){
       +(memOnly?'<br><br><span style="color:#b3744a">⚠ 이 환경에서는 자동 저장이 안 될 수 있어요. 「데이터 백업」으로 따로 보관하세요.</span>':'')+'</div>';
     return;
   }
-  list.innerHTML=roster.map(p=>{
+  // 선수 명단은 ㄱㄴㄷ(가나다) 순으로 표시 (원본 roster 배열은 건드리지 않음)
+  list.innerHTML=[...roster].sort(nameCmp).map(p=>{
     const g=(p.wins||0)+(p.losses||0);
     const rec=g?`<span class="recmini">${p.wins||0}승 ${p.losses||0}패</span>`:'';
     return `
@@ -523,12 +524,20 @@ function renderLbFilter(){
     +LANES.map(l=>`<button data-lane="${l.key}" class="${lbLane===l.key?'on':''}" title="${l.name}">${laneSVG(l.key)}</button>`).join('');
   f.querySelectorAll('button').forEach(b=>b.onclick=()=>{lbLane=b.dataset.lane;renderRanking();});
 }
-// 대표 점수 = 주/부 라인 중 더 높은 점수
+// 대표 점수 = 주/부 라인 중 더 높은 점수 (전체 순위·칭호 판정용)
 function repOf(p){
   return (p.mainScore>=p.subScore)
     ? {tierKey:p.mainTier,score:p.mainScore}
     : {tierKey:p.subTier, score:p.subScore};
 }
+// 특정 라인 기준 점수 = 그 라인에 등록한 점수만 사용 (라인별 순위표용)
+// 주 라인이면 주 점수, 부 라인이면 부 점수. isMain은 동점자 처리(주 라인 우선)에 사용.
+function laneRepOf(p,lane){
+  if(p.mainLane===lane) return {tierKey:p.mainTier,score:p.mainScore,isMain:true};
+  return {tierKey:p.subTier,score:p.subScore,isMain:false};
+}
+// 한글 ㄱㄴㄷ(가나다) 순 이름 비교
+function nameCmp(a,b){ return String(a.name).localeCompare(String(b.name),'ko'); }
 function renderRanking(){
   const listEl=document.getElementById('rankList');
   if(!listEl) return;                       // 순위 탭이 없는 페이지 방어
@@ -539,10 +548,18 @@ function renderRanking(){
     return;
   }
   renderLbFilter();
-  const rankedAll=roster.map(p=>({p,rep:repOf(p)})).sort((a,b)=>b.rep.score-a.rep.score);
+  // 전체 순위: 대표 점수(주/부 중 높은 쪽) 내림차순 → 동점이면 ㄱㄴㄷ 순
+  const rankedAll=roster.map(p=>({p,rep:repOf(p)}))
+    .sort((a,b)=> b.rep.score-a.rep.score || nameCmp(a.p,b.p));
   const globalRank={}; rankedAll.forEach((r,i)=>globalRank[r.p.id]=i+1);
+  // 라인별 순위: 반드시 "그 라인에 등록한 점수"로만 계산
+  // 동점이면 그 라인이 주 라인인 선수 우선 → 그래도 같으면 ㄱㄴㄷ 순
   const ranked=lbLane==='ALL'?rankedAll
-    :rankedAll.filter(r=>r.p.mainLane===lbLane||r.p.subLane===lbLane);
+    :roster.filter(p=>p.mainLane===lbLane||p.subLane===lbLane)
+      .map(p=>({p,rep:laneRepOf(p,lbLane)}))
+      .sort((a,b)=> b.rep.score-a.rep.score
+        || (b.rep.isMain?1:0)-(a.rep.isMain?1:0)
+        || nameCmp(a.p,b.p));
   if(cntEl) cntEl.textContent=lbLane==='ALL'?roster.length+'명':`${LANE_NAME[lbLane]} ${ranked.length}명`;
   if(ranked.length===0){
     listEl.innerHTML='<div class="notice">이 포지션을 주·부 라인으로 등록한 선수가 없어요.</div>';
@@ -598,7 +615,8 @@ function renderPickGrid(){
   }
   cleanPairs();
   g.classList.toggle('pairmode',pairMode);
-  g.innerHTML=roster.map(p=>{
+  // 참가자 선택 그리드도 ㄱㄴㄷ 순 (찾기 쉽게)
+  g.innerHTML=[...roster].sort(nameCmp).map(p=>{
     const pi=pairIndexOf(p.id);
     const pc=pi>=0?PAIR_COLORS[pi%PAIR_COLORS.length]:'';
     const ptag=pi>=0?`<span class="pairtag" style="color:${pc};border-color:${pc}">🔗${pi+1}</span>`:'';

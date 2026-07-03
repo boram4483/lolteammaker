@@ -753,7 +753,7 @@ body{
 /* 패널·카드: 살짝 밝게 + 둥글게 */
 .panel{
   background:linear-gradient(180deg,rgba(18,38,47,.88),rgba(9,22,29,.9));
-  border-radius:14px;overflow:hidden;
+  border-radius:14px; /* overflow:hidden 제거 — 패널 위에 걸터앉은 포로가 잘리지 않도록 */
 }
 .notice,.rank-note,.pick-note,.tol-box,.pair-box,.legend,.auto-note,.pair-note,.mvp-done{border-radius:10px}
 .btn,.minilink,.champin,.ct-add input,.modal textarea,#tolInput,.tol-presets button{border-radius:8px}
@@ -923,3 +923,63 @@ header.site h1{
 }
 .vb-host button:hover{border-color:var(--gold);color:var(--gold-bright)}
 #voteBanner + .wrap{padding-top:40px}
+
+/* ===================== 포로 장식 ===================== */
+.poro{
+  position:absolute;pointer-events:none;user-select:none;-webkit-user-drag:none;
+  z-index:3;height:auto;
+  filter:drop-shadow(0 8px 14px rgba(0,0,0,.5));
+  animation:poroBob 4.2s ease-in-out infinite;
+}
+@keyframes poroBob{0%,100%{transform:var(--poro-t,none) translateY(0)}50%{transform:var(--poro-t,none) translateY(-5px)}}
+
+/* 헤더 양옆 — 티모(좌) · 코르키(우) */
+.poro-hd-l{left:clamp(-6px,4vw,60px);bottom:2px;width:clamp(72px,10vw,116px);--poro-t:rotate(-5deg)}
+.poro-hd-r{right:clamp(-6px,3.5vw,52px);top:26px;width:clamp(84px,11vw,132px);--poro-t:rotate(3deg);animation-delay:1.6s}
+
+/* 패널 위에 걸터앉은 포로 (탭 콘텐츠 상단 오른쪽) */
+.poro.perch{
+  top:0;right:22px;width:88px;
+  --poro-t:translateY(-76%);
+  animation-name:poroPerch;
+}
+.poro.perch.sm{width:72px;right:18px}
+@keyframes poroPerch{0%,100%{transform:translateY(-76%)}50%{transform:translateY(calc(-76% - 4px))}}
+
+/* 룰루 옆을 맴도는 픽스 요정 포로 */
+.poro-pix{
+  top:-64px;right:128px;width:44px;
+  animation:pixFloat 5s ease-in-out infinite;
+}
+@keyframes pixFloat{
+  0%,100%{transform:translate(0,0) rotate(-6deg)}
+  30%{transform:translate(-8px,-10px) rotate(4deg)}
+  65%{transform:translate(6px,-4px) rotate(-2deg)}
+}
+
+/* 푸터 위 포로 행진 */
+.poro-parade{
+  display:flex;justify-content:center;align-items:flex-end;gap:clamp(10px,4vw,34px);
+  margin-top:46px;padding:0 10px;
+}
+.poro-parade img{
+  width:clamp(58px,9vw,96px);height:auto;
+  pointer-events:none;user-select:none;-webkit-user-drag:none;
+  filter:drop-shadow(0 8px 14px rgba(0,0,0,.5));
+  animation:poroBob 4.2s ease-in-out infinite;
+  animation-delay:var(--d,0s);
+}
+
+@media (max-width:680px){
+  .poro-hd-l,.poro-hd-r{width:64px;opacity:.9}
+  .poro.perch{width:64px;right:12px}
+  .poro.perch.sm{width:54px}
+  .poro-pix{width:32px;right:88px;top:-46px}
+}
+@media (max-width:420px){
+  .poro-hd-l,.poro-hd-r{display:none}
+}
+@media (prefers-reduced-motion:reduce){
+  .poro,.poro-parade img{animation:none}
+  .poro.perch{transform:translateY(-76%)}
+}
