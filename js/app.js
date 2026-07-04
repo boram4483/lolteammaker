@@ -704,14 +704,14 @@ function randomAssign(players){
   }
   return bt(0)?res:null;
 }
-function bestSplit(res,cons){
+function bestSplit(res,cons,tol){
   const byPos={TOP:[],JG:[],MID:[],ADC:[],SUP:[]};
   for(const id in res) byPos[res[id].pos].push({id,...res[id]});
   // 묶인 두 명이 같은 포지션에 배치되면(=무조건 반대팀) 이 배치 자체가 불가
   if(cons&&cons.length){
     for(const pr of cons){ if(res[pr[0]]&&res[pr[1]]&&res[pr[0]].pos===res[pr[1]].pos) return null; }
   }
-  let best=null;
+  const outs=[];
   for(let mask=0;mask<32;mask++){
     const team={};
     const blue=[],red=[];let bt=0,rt=0;
@@ -722,14 +722,16 @@ function bestSplit(res,cons){
     });
     if(cons&&cons.some(pr=>team[pr[0]]!==team[pr[1]])) continue; // 묶기 위반 조합 제외
     const diff=Math.abs(bt-rt);
-    // 부라인 인원이 양 팀에 똑같이 나뉘도록: 부라인 불균형(subImb) 최소 → 그 다음 점수차 최소
     const bSub=blue.filter(x=>x.role==='sub').length;
     const rSub=red.filter(x=>x.role==='sub').length;
-    const subImb=Math.abs(bSub-rSub);
-    if(!best || subImb<best.subImb || (subImb===best.subImb && diff<best.diff))
-      best={blue,red,blueTotal:bt,redTotal:rt,diff,subImb};
+    outs.push({blue,red,blueTotal:bt,redTotal:rt,diff,subImb:Math.abs(bSub-rSub)});
   }
-  return best;
+  if(!outs.length) return null;
+  // 부라인 불균형 최소 → 점수차 최소 순으로 정렬 후,
+  // 최선과 같은 불균형이면서 점수차가 tol 이내인 분배를 전부 반환 (팀 조합 다양성 확보)
+  outs.sort((a,b)=>a.subImb-b.subImb||a.diff-b.diff);
+  const b0=outs[0], t=(typeof tol==='number')?tol:0;
+  return outs.filter(s=>s.subImb===b0.subImb && s.diff<=b0.diff+t);
 }
 function objKey(res,split){
   let auto=0,sub=0;
@@ -761,23 +763,32 @@ function generate(players){
   const P=prep(players);
   const idset=new Set(P.map(p=>p.id));
   const cons=pairs.filter(pr=>pr.every(id=>idset.has(id))); // 이번 10명에 해당하는 묶기만 적용
+  const TOL=balanceTol;
   let best=null;const pool=[];
   const ITER=3500;
   for(let it=0;it<ITER;it++){
     const res=randomAssign(P);if(!res)continue;
-    const split=bestSplit(res,cons);if(!split)continue;
-    const ok=objKey(res,split);
-    const sol={res,split,ok,players:P};
-    if(!best||ok.key<best.ok.key) best=sol;
-    if(pool.length<900) pool.push(sol);
-    else if(Math.random()<0.25) pool[Math.floor(Math.random()*pool.length)]=sol;
+    const splits=bestSplit(res,cons,TOL);if(!splits)continue;
+    for(const sp of splits){
+      const ok=objKey(res,sp);
+      const sol={res,split:sp,ok,players:P};
+      if(!best||ok.key<best.ok.key) best=sol;
+      if(pool.length<900) pool.push(sol);
+      else if(Math.random()<0.25) pool[Math.floor(Math.random()*pool.length)]=sol;
+    }
   }
   if(!best) return null; // 묶기 조건을 만족하는 조합이 없음
-  const TOL=balanceTol;
-  let cand=pool.filter(s=>s.ok.auto===best.ok.auto && s.ok.subImb===best.ok.subImb && s.ok.sub===best.ok.sub && s.ok.diff<=best.ok.diff+TOL);
+  // 다양성 후보: 최적해 기준으로 자동배치 동일, 부라인 균형은 더 나빠지지 않고,
+  // 부라인은 최대 +2명(한 쌍)까지 허용 → 판마다 라인·팀이 실제로 섞임 (주라인 "위주"는 유지)
+  let cand=pool.filter(s=>
+    s.ok.auto===best.ok.auto &&
+    s.ok.subImb<=best.ok.subImb &&
+    s.ok.sub<=best.ok.sub+2 &&
+    s.ok.diff<=best.ok.diff+TOL);
   if(cand.length===0) cand=[best];
   cand.forEach(s=>{ s.variety=varietyPenalty(s); });
-  cand.sort((a,b)=> a.variety-b.variety || a.ok.diff-b.ok.diff || (Math.random()-0.5));
+  // 최근 판들과 겹침이 적은 조합 우선 → 같으면 부라인 적은 쪽 → 점수차 작은 쪽
+  cand.sort((a,b)=> a.variety-b.variety || a.ok.sub-b.ok.sub || a.ok.diff-b.ok.diff || (Math.random()-0.5));
   return cand[0];
 }
 
