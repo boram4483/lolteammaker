@@ -145,7 +145,8 @@ function applyCloudData(players){
 window.startCloudSync=function(){
   if(cloudActive || !window.CLOUD) return;
   cloudActive=true;
-  const cs=document.getElementById('cloudStatus'); if(cs) cs.hidden=false;
+  const cs=document.getElementById('cloudStatus');
+  if(cs){ cs.hidden=false; cs.classList.remove('off'); cs.textContent='☁ 실시간 공유 중'; }
   if(window.CLOUD.onVote) window.CLOUD.onVote(applyVoteData);   // 실시간 MVP 투표 구독
   window.CLOUD.onData(function(players){
     if(players===null){
@@ -156,6 +157,13 @@ window.startCloudSync=function(){
     applyCloudData(players);
   });
 };
+// 몇 초 안에 클라우드 연결이 안 되면 "로컬 모드" 경고 표시
+// (광고차단기·추적방지 확장이 Firebase 연결을 막는 경우가 흔함 → 이 브라우저에선 실시간 투표 배너가 안 뜸)
+setTimeout(()=>{
+  if(cloudActive) return;
+  const cs=document.getElementById('cloudStatus');
+  if(cs){ cs.hidden=false; cs.classList.add('off'); cs.textContent='⚠ 로컬 모드 — 실시간 공유·MVP 투표가 이 브라우저에는 안 보여요 (광고차단기 확인)'; }
+},7000);
 
 //============ state ============
 let editingId=null;
@@ -698,14 +706,23 @@ function bestSplit(res,cons){
     });
     if(cons&&cons.some(pr=>team[pr[0]]!==team[pr[1]])) continue; // 묶기 위반 조합 제외
     const diff=Math.abs(bt-rt);
-    if(!best||diff<best.diff) best={blue,red,blueTotal:bt,redTotal:rt,diff};
+    // 부라인 인원이 양 팀에 똑같이 나뉘도록: 부라인 불균형(subImb) 최소 → 그 다음 점수차 최소
+    const bSub=blue.filter(x=>x.role==='sub').length;
+    const rSub=red.filter(x=>x.role==='sub').length;
+    const subImb=Math.abs(bSub-rSub);
+    if(!best || subImb<best.subImb || (subImb===best.subImb && diff<best.diff))
+      best={blue,red,blueTotal:bt,redTotal:rt,diff,subImb};
   }
   return best;
 }
 function objKey(res,split){
   let auto=0,sub=0;
   for(const id in res){if(res[id].role==='auto')auto++;else if(res[id].role==='sub')sub++;}
-  return {auto,sub,diff:split.diff,key:auto*1e7+split.diff*10+sub};
+  const subImb=split.subImb||0;
+  // 우선순위: ① 자동배치 최소 ② 부라인 총원 최소(=주라인 최대) ③ 부라인 양팀 균형(블루=레드) ④ 점수차
+  // ※ 부라인 총원이 홀수로 강제되는 판은 완벽한 균형이 수학적으로 불가능 → 그때만 1명 차이 허용
+  // ※ 균형(subImb)을 총원(sub)보다 앞세우고 싶으면 두 항의 가중치(1e9↔1e7)를 서로 바꾸면 됨
+  return {auto,sub,subImb,diff:split.diff,key:auto*1e12+sub*1e9+subImb*1e7+split.diff};
 }
 function teamMapOf(sol){const m={};sol.split.blue.forEach(r=>m[r.id]='B');sol.split.red.forEach(r=>m[r.id]='R');return m;}
 function laneMapOf(sol){const m={};for(const id in sol.res)m[id]=sol.res[id].pos;return m;}
@@ -741,7 +758,7 @@ function generate(players){
   }
   if(!best) return null; // 묶기 조건을 만족하는 조합이 없음
   const TOL=balanceTol;
-  let cand=pool.filter(s=>s.ok.auto===best.ok.auto && s.ok.diff<=best.ok.diff+TOL);
+  let cand=pool.filter(s=>s.ok.auto===best.ok.auto && s.ok.subImb===best.ok.subImb && s.ok.sub===best.ok.sub && s.ok.diff<=best.ok.diff+TOL);
   if(cand.length===0) cand=[best];
   cand.forEach(s=>{ s.variety=varietyPenalty(s); });
   cand.sort((a,b)=> a.variety-b.variety || a.ok.diff-b.ok.diff || (Math.random()-0.5));
@@ -917,6 +934,8 @@ function renderBattle(){
   const v=verdict(diff);
   const tot=B.total+R.total, bp=tot?Math.round(B.total/tot*100):50;
   const auto=[...battle.blue,...battle.red].filter(r=>r.role==='auto').length;
+  const bSubN=battle.blue.filter(r=>r.role==='sub').length;
+  const rSubN=battle.red.filter(r=>r.role==='sub').length;
 
   let controls;
   if(!battle.settled){
@@ -928,7 +947,7 @@ function renderBattle(){
     const w=battle.settled==='blue'?'1팀(블루)':'2팀(레드)';
     let mvpBlock='';
     if(battle.voteMode&&!battle.mvpDone){
-      mvpBlock=`<div class="mvp-done">🗳️ 참가자 투표로 MVP를 뽑는 중이에요 — 상단 투표 배너에서 한 표!</div>`;
+      mvpBlock=`<div class="mvp-done">🗳️ 참가자 투표로 MVP를 뽑는 중이에요 — 화면 <b>맨 위 금색 배너</b>에서 한 표!<br><span style="font-size:11px;color:var(--text-mute)">배너가 안 보이는 사람은 헤더의 「☁ 실시간 공유 중」 표시를 확인하세요. 「⚠ 로컬 모드」면 광고차단기가 실시간 연결을 막고 있는 거예요.</span></div>`;
     }else if(!battle.mvpDone){
       const winners=[...battle[battle.settled]].sort((a,b)=>POS.indexOf(a.pos)-POS.indexOf(b.pos));
       mvpBlock=`<div class="mvp-pick"><span class="lbl">🏆 이 판의 POG / MVP</span>`
@@ -957,7 +976,7 @@ function renderBattle(){
       <div class="balbar-wrap">
         <div class="balbar"><span class="b" style="width:${bp}%"></span><span class="r" style="width:${100-bp}%"></span></div>
         <div class="baltxt">점수 차이 <span class="diff">${diff}</span><span class="verdict" style="color:${v.c};border-color:${v.c}">${v.t}</span></div>
-        <div style="font-size:11px;color:var(--text-mute);margin-top:8px">블루 ${B.total} · 레드 ${R.total}${auto?` · 자동배치 ${auto}명`:''}</div>
+        <div style="font-size:11px;color:var(--text-mute);margin-top:8px">블루 ${B.total} · 레드 ${R.total}${(bSubN||rSubN)?` · 부라인 블루 ${bSubN}명·레드 ${rSubN}명`:' · 전원 주라인'}${auto?` · 자동배치 ${auto}명`:''}</div>
       </div>
       ${controls}
       <div class="btn-row" style="justify-content:center;margin-top:16px">
@@ -1022,15 +1041,34 @@ function startVote(winnerTeamKey){
   return true;
 }
 function applyVoteData(v){
+  const wasActive=!!(voteState&&voteState.active);
   voteState=v;
   if(v&&v.active){
     if(Date.now()>=v.endsAt){ finalizeVote(); return; }
     if(!voteTick) voteTick=setInterval(voteHeartbeat,1000);
+    // 이 브라우저 입장에서 투표가 "새로" 시작됨 → 놓치지 않게 토스트 + 탭 제목 깜빡임
+    if(!wasActive){
+      if(v.starter!==voterId) toast('🗳️ MVP 투표가 시작됐어요! 화면 맨 위 배너에서 한 표 눌러주세요');
+      startTitleFlash();
+    }
   }else{
     if(voteTick){clearInterval(voteTick);voteTick=null;}
+    stopTitleFlash();
   }
   renderVoteBanner();
   if(battle&&battle.settled){try{renderBattle();}catch(e){}}
+}
+// 다른 탭 보고 있는 사람도 알 수 있게 브라우저 탭 제목을 깜빡임
+const BASE_TITLE=document.title;
+let titleFlashTimer=null;
+function startTitleFlash(){
+  if(titleFlashTimer)return;
+  let on=false;
+  titleFlashTimer=setInterval(()=>{ document.title=(on=!on)?'🗳️ MVP 투표 중! 한 표 주세요':BASE_TITLE; },1300);
+}
+function stopTitleFlash(){
+  if(titleFlashTimer){clearInterval(titleFlashTimer);titleFlashTimer=null;}
+  document.title=BASE_TITLE;
 }
 function voteHeartbeat(){
   if(!voteState||!voteState.active){ if(voteTick){clearInterval(voteTick);voteTick=null;} return; }
@@ -1095,6 +1133,7 @@ function renderVoteBanner(){
   const showResult=v&&!v.active&&v.winnerName&&v.finishedAt&&(Date.now()-v.finishedAt<45000);
   if(!v||(!v.active&&!showResult)){ if(el)el.remove(); return; }
   if(!el){ el=document.createElement('div'); el.id='voteBanner'; document.body.appendChild(el); }
+  el.classList.toggle('live',!!v.active);
   if(v.active){
     const tally=voteTally(v);
     const mine=(v.votes||{})[voterId];

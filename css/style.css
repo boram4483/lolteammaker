@@ -174,6 +174,7 @@ input::placeholder{color:var(--text-mute)}
 .cloud-status{display:inline-block;margin-top:10px;font-size:11px;font-weight:600;color:var(--blue);
   border:1px solid var(--blue-soft);padding:3px 10px;border-radius:999px;letter-spacing:.02em;
   background:var(--blue-deep)}
+.cloud-status.off{color:#ffb27d;border-color:rgba(255,150,90,.5);background:rgba(120,60,20,.18)}
 
 /* ===== 선수 순위 ===== */
 .rank-note{font-size:12px;color:var(--text-dim);line-height:1.6;margin-bottom:14px;padding:10px 12px;background:#06121c;border:1px solid var(--line-soft)}
@@ -870,7 +871,12 @@ header.site h1{
   animation:vbIn .25s ease;
 }
 @keyframes vbIn{from{opacity:0;transform:translate(-50%,-8px)}to{opacity:1;transform:translate(-50%,0)}}
-@media (prefers-reduced-motion:reduce){#voteBanner{animation:none}}
+#voteBanner.live{animation:vbIn .25s ease,vbPulse 1.8s ease-in-out .3s infinite}
+@keyframes vbPulse{
+  0%,100%{box-shadow:0 10px 34px rgba(0,0,0,.6),0 0 22px -6px rgba(200,170,110,.55)}
+  50%{box-shadow:0 10px 34px rgba(0,0,0,.6),0 0 34px -2px rgba(233,205,139,.95)}
+}
+@media (prefers-reduced-motion:reduce){#voteBanner,#voteBanner.live{animation:none}}
 .vb-head{font-size:13.5px;font-weight:800;color:var(--gold-bright);letter-spacing:.04em;text-align:center}
 .vb-head.done{padding:2px 0}
 .vb-head b{color:var(--gold)}
