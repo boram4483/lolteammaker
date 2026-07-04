@@ -157,6 +157,18 @@ window.startCloudSync=function(){
     applyCloudData(players);
   });
 };
+// Firestore 읽기/쓰기가 거부되면(보안 규칙 만료·권한 문제 등) 뱃지로 바로 알림
+// — 연결은 됐지만 저장이 안 되는 "가짜 연결" 상태를 잡아내는 용도
+let cloudErrToasted=false;
+window.cloudError=function(err){
+  const cs=document.getElementById('cloudStatus'); if(!cs) return;
+  const perm=err&&String(err.code||err.message||'').toLowerCase().includes('permission');
+  cs.hidden=false; cs.classList.add('off');
+  cs.textContent=perm
+    ? '⚠ 저장 거부됨 — Firebase 콘솔에서 Firestore 보안 규칙을 확인하세요 (테스트 모드 30일 만료 가능성)'
+    : '⚠ 연결 오류 — 실시간 공유·투표가 동작하지 않아요 (F12 콘솔 확인)';
+  if(!cloudErrToasted){ cloudErrToasted=true; toast('⚠ 실시간 저장에 실패했어요 — 상단 뱃지를 확인하세요'); }
+};
 // 몇 초 안에 클라우드 연결이 안 되면 "로컬 모드" 경고 표시
 // (광고차단기·추적방지 확장이 Firebase 연결을 막는 경우가 흔함 → 이 브라우저에선 실시간 투표 배너가 안 뜸)
 setTimeout(()=>{
@@ -173,7 +185,10 @@ let roundHistory=[];                // 최근 판들 {team, lane} — 팀/라인
 const HISTORY_MAX=5;
 let battle=null;                    // 현재 결과 {blue, red, pm, settled}
 let swapPick=null;                  // 수동 교체용 선택중인 선수
-let undoStack=[];                   // 승리 되돌리기
+const UNDO_KEY='lol_inhouse_undo_v1';
+let undoStack=[];                   // 승리 되돌리기 — localStorage에 저장해 새로고침해도 유지
+try{ undoStack=JSON.parse(localStorage.getItem(UNDO_KEY)||'[]')||[]; }catch(e){ undoStack=[]; }
+function persistUndo(){ try{ localStorage.setItem(UNDO_KEY,JSON.stringify(undoStack.slice(-5))); }catch(e){} }
 // 티어별 승리 점수 변동 계수.
 // 점수 폭이 400인 티어는 K=32, 마스터 이상(폭 1000)은 폭에 비례해 크게 → 스윙이 "폭의 약 8%"로 일정.
 // (예전에는 마스터도 K=32라, 폭이 넓은 고티어에선 기대승률이 포화돼 +1밖에 안 올랐음)
@@ -593,6 +608,7 @@ function renderPickGrid(){
   });
   g.querySelectorAll('[data-info]').forEach(b=>b.onclick=e=>{e.stopPropagation();openInfo(b.dataset.info);});
   renderPairBox();
+  renderUndoBar();
   updateSelCount();
 }
 
@@ -774,6 +790,44 @@ function verdict(diff){
 }
 function pmap(P){const m={};P.forEach(p=>m[p.id]=p);return m;}
 
+//============ 되돌리기 바 (결과 화면이 닫혀 있어도 최근 승리 반영을 복구) ============
+function renderUndoBar(){
+  const el=document.getElementById('undoBar'); if(!el) return;
+  if(!undoStack.length || battle){ el.innerHTML=''; el.style.display='none'; return; }
+  const last=undoStack[undoStack.length-1];
+  const w=last.winner==='blue'?'1팀(블루)':'2팀(레드)';
+  const when=last.ts?new Date(last.ts).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
+  el.style.display='';
+  el.innerHTML=`<div class="undo-bar">↩ 최근 승리 반영이 저장돼 있어요 — <b>${w} 승</b>${when?` · ${when}`:''}
+    <button class="btn ghost" id="undoBarBtn">되돌리기</button></div>`;
+  document.getElementById('undoBarBtn').onclick=()=>{
+    if(confirm('가장 최근 승리 반영(점수·전적·MVP)을 되돌릴까요?')) undoWin();
+  };
+}
+
+//============ 한 판 전 명단 복구 (승리 반영 직전 백업) ============
+const BK_KEY='lol_inhouse_backup_v1';
+async function restorePrevGame(){
+  let bk=null;
+  if(cloudActive&&window.CLOUD&&window.CLOUD.loadBackup){ try{ bk=await window.CLOUD.loadBackup(); }catch(e){} }
+  if(!bk){ try{ bk=JSON.parse(localStorage.getItem(BK_KEY)||'null'); }catch(e){} }
+  if(!bk||!Array.isArray(bk.players)||!bk.players.length){
+    toast('복구할 백업이 없어요 — 백업은 승리를 반영하는 순간 자동 저장돼요');
+    return;
+  }
+  const when=bk.savedAt?new Date(bk.savedAt).toLocaleString('ko-KR'):'알 수 없음';
+  const w=bk.winner==='blue'?'1팀(블루)':bk.winner==='red'?'2팀(레드)':'?';
+  if(!confirm(`마지막 승리 반영(${w} 승) 직전의 명단으로 되돌릴까요?\n\n백업 시점: ${when}\n\n· 선수 ${bk.players.length}명의 점수·전적·MVP·명예가 그 시점으로 복구됩니다\n· 그 이후 반영한 승패와 선수 추가·수정도 함께 되돌아갑니다\n· 실시간 공유 중이면 모든 참가자 화면에도 반영됩니다`)) return;
+  roster=bk.players.filter(p=>p&&p.name&&p.mainLane&&p.subLane).map(normalizePlayer);
+  battle=null; const rEl=document.getElementById('result'); if(rEl)rEl.innerHTML='';
+  undoStack=[]; persistUndo();   // 복구 이후엔 기존 스냅샷이 안 맞으므로 비움
+  persist();                     // 로컬 저장 + 클라우드 업로드 → 전원 동기화
+  renderRoster(); renderPickGrid();
+  toast('⏪ 한 판 전 명단으로 복구했어요');
+}
+const restoreBtn=document.getElementById('restorePrev');
+if(restoreBtn) restoreBtn.onclick=restorePrevGame;
+
 function makeBattle(){
   const players=roster.filter(p=>selected.has(p.id));
   if(players.length!==10){toast('정확히 10명을 선택하세요');return;}
@@ -791,6 +845,7 @@ function makeBattle(){
   };
   swapPick=null;
   renderBattle();
+  renderUndoBar();
 }
 
 function refreshBattle(){
@@ -827,6 +882,8 @@ function onRowClick(id){
 // 승리 반영: 친 라인의 점수만, 그 티어 범위 안에서만 변동 (티어 이동 없음)
 function applyWin(winner){
   if(!battle||battle.settled)return;
+  // 승리 반영 "직전" 전체 명단을 통째로 백업 — 되돌리기를 놓쳤을 때 이 시점으로 복구 가능
+  const rosterBefore=JSON.parse(JSON.stringify(roster));
   const bAvg=battle.blue.reduce((s,r)=>s+r.score,0)/5;
   const rAvg=battle.red.reduce((s,r)=>s+r.score,0)/5;
   const snap=[];
@@ -850,7 +907,11 @@ function applyWin(winner){
   }
   adj(battle.blue, rAvg, winner==='blue');
   adj(battle.red,  bAvg, winner==='red');
-  undoStack.push({snap,winner});
+  undoStack.push({snap,winner,ts:Date.now()});
+  persistUndo();
+  const bk={players:rosterBefore,savedAt:Date.now(),winner};
+  if(cloudActive&&window.CLOUD&&window.CLOUD.saveBackup){ try{window.CLOUD.saveBackup(bk);}catch(e){} }
+  try{ localStorage.setItem(BK_KEY,JSON.stringify(bk)); }catch(e){}
   persist();
   battle.settled=winner;
   // 실시간 공유 중이면 MVP는 참가자 투표로, 아니면 진행자가 직접 선택
@@ -866,7 +927,7 @@ function pickMvp(id){
     if(p){
       p.mvp=(p.mvp||0)+1; p.honor=(p.honor||0)+10;
       battle.mvpId=id;
-      const last=undoStack[undoStack.length-1]; if(last)last.mvpId=id;
+      const last=undoStack[undoStack.length-1]; if(last){last.mvpId=id; persistUndo();}
       persist();
       toast(`${p.name} — POG/MVP! 명예 +10`);
     }
@@ -886,8 +947,9 @@ function undoWin(){
     if(typeof s.w==='number')p.wins=s.w; if(typeof s.l==='number')p.losses=s.l;
     if(Array.isArray(p.hist)&&p.hist.length)p.hist.shift();});
   persist();
-  if(battle){ battle.settled=false; battle.mvpDone=false; battle.mvpId=null; }
-  refreshBattle(); renderBattle(); renderRoster();
+  persistUndo();
+  if(battle){ battle.settled=false; battle.mvpDone=false; battle.mvpId=null; refreshBattle(); renderBattle(); }
+  renderRoster(); renderUndoBar();
   toast('승리 반영을 되돌렸어요');
 }
 function copyTeams(){
@@ -1105,7 +1167,7 @@ function finalizeVote(){
     const p=roster.find(x=>x.id===winner.id);
     if(p){
       p.mvp=(p.mvp||0)+1; p.honor=(p.honor||0)+10;
-      const last=undoStack[undoStack.length-1]; if(last&&!last.mvpId)last.mvpId=winner.id;
+      const last=undoStack[undoStack.length-1]; if(last&&!last.mvpId){last.mvpId=winner.id; persistUndo();}
       persist();
     }
     if(battle&&battle.settled){battle.mvpDone=true;battle.mvpId=winner.id;}

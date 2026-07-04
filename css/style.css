@@ -907,6 +907,17 @@ header.site h1{
 .vb-host button:hover{border-color:var(--gold);color:var(--gold-bright)}
 #voteBanner + .wrap{padding-top:40px}
 
+/* ===== 되돌리기 바 ===== */
+.undo-bar{
+  display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;
+  margin:14px 0;padding:11px 14px;font-size:12.5px;color:var(--text-dim);
+  background:rgba(120,80,20,.1);border:1px solid rgba(200,170,110,.35);border-radius:12px;
+}
+.undo-bar b{color:var(--gold-bright)}
+.undo-bar .btn{padding:5px 14px;font-size:12px}
+.backup-row{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;margin:16px 0 6px;opacity:.85}
+.backup-hint{font-size:11px;color:var(--text-mute)}
+
 /* ===================== 포로 장식 ===================== */
 .poro{
   position:absolute;pointer-events:none;user-select:none;-webkit-user-drag:none;

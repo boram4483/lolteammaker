@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>춘팔이의 롤 내전 밸런스 메이커!</title>
+<title>춘팔이의 롤 내전 밸런스 메이커</title>
 <meta name="description" content="자동 팀 밸런싱 · 리더보드 · 칭호 도감 · 실시간 MVP 투표. 친구들과 즐기는 롤 내전 도구!">
 
 <!-- ▼▼ 카톡/디스코드 링크 미리보기 설정 — 주소 설정 완료 — 그대로 쓰면 됩니다 ▼▼ -->
@@ -155,7 +155,12 @@
         </div>
       </div>
     </div>
+    <div id="undoBar" style="display:none"></div>
     <div id="result"></div>
+    <div class="backup-row">
+      <button class="minilink" id="restorePrev">⏪ 한 판 전 명단으로 복구</button>
+      <span class="backup-hint">되돌리기를 놓쳤을 때 — 마지막 승리 반영 직전 상태로 전체 복구 (자동 백업)</span>
+    </div>
   </section>
 
   <!-- RANKING -->
@@ -227,7 +232,7 @@
 <script type="module">
   try{
     const { initializeApp } = await import("https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js");
-    const { getFirestore, doc, onSnapshot, setDoc } = await import("https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js");
+    const { getFirestore, doc, onSnapshot, setDoc, getDoc } = await import("https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js");
 
     const firebaseConfig = {
       apiKey: "AIzaSyAlIkRmc1hPugk5dxsqevtDJHzlPkL4k_Y",
@@ -242,29 +247,39 @@
     const db  = getFirestore(app);
     const ref = doc(db, "inhouse", "roster");     // 명단 전체를 문서 하나에 저장
     const vref = doc(db, "inhouse", "liveVote");  // 실시간 MVP 투표 세션
+    const bref = doc(db, "inhouse", "backupPrev"); // 마지막 승리 반영 직전의 전체 명단 백업
 
     window.CLOUD = {
       onData(cb){
         onSnapshot(ref,
           snap => cb(snap.exists() ? (snap.data().players || []) : null),
-          err  => console.warn("[cloud] 읽기 오류:", err));
+          err  => { console.warn("[cloud] 읽기 오류:", err); if(window.cloudError) window.cloudError(err); });
       },
       save(players){
         setDoc(ref, { players, updatedAt: Date.now() })
-          .catch(e => console.warn("[cloud] 저장 오류:", e));
+          .catch(e => { console.warn("[cloud] 저장 오류:", e); if(window.cloudError) window.cloudError(e); });
       },
       onVote(cb){
         onSnapshot(vref,
           snap => cb(snap.exists() ? snap.data() : null),
-          err  => console.warn("[vote] 읽기 오류:", err));
+          err  => { console.warn("[vote] 읽기 오류:", err); if(window.cloudError) window.cloudError(err); });
       },
       saveVote(data){
         setDoc(vref, data)
-          .catch(e => console.warn("[vote] 저장 오류:", e));
+          .catch(e => { console.warn("[vote] 저장 오류:", e); if(window.cloudError) window.cloudError(e); });
       },
       castVote(voterKey, candId){
         setDoc(vref, { votes: { [voterKey]: candId } }, { merge: true })
-          .catch(e => console.warn("[vote] 투표 오류:", e));
+          .catch(e => { console.warn("[vote] 투표 오류:", e); if(window.cloudError) window.cloudError(e); });
+      },
+      saveBackup(data){
+        setDoc(bref, data)
+          .catch(e => { console.warn("[backup] 저장 오류:", e); if(window.cloudError) window.cloudError(e); });
+      },
+      loadBackup(){
+        return getDoc(bref)
+          .then(s => s.exists() ? s.data() : null)
+          .catch(e => { console.warn("[backup] 읽기 오류:", e); if(window.cloudError) window.cloudError(e); return null; });
       }
     };
 
