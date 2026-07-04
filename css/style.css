@@ -587,13 +587,6 @@ header.site .kr{letter-spacing:.3em;padding-left:.3em}
 .lbrow .status{flex:1.35 1 0;min-width:120px;display:flex;flex-wrap:wrap;gap:4px;align-items:center;justify-content:flex-start}
 .lbrow .wr{flex:0 0 124px}
 .lbrow .posic{flex:0 0 46px}
-.lbrow .champs{flex:0 0 92px;display:flex;gap:4px;justify-content:center;align-items:center}
-
-/* champ icons */
-.champ{width:26px;height:26px;border:1px solid var(--line);border-radius:3px;object-fit:cover;background:#06121c}
-.champ.txt{display:inline-flex;align-items:center;justify-content:center;font-size:9px;color:var(--text-dim);overflow:hidden}
-.champ.none{border:none;background:none;color:var(--text-mute);font-size:12px}
-
 /* title badges */
 .tbadge{
   display:inline-flex;align-items:center;gap:3px;
@@ -609,7 +602,7 @@ header.site .kr{letter-spacing:.3em;padding-left:.3em}
 @media (max-width:900px){
   .lbhead{display:none}
   .lbrow{flex-wrap:wrap;gap:8px}
-  .lbrow .tieric,.lbrow .posic,.lbrow .champs{display:none}
+  .lbrow .tieric,.lbrow .posic{display:none}
   .lbrow .mmr{flex:0 0 auto;padding:3px 12px;font-size:14px}
   .lbrow .honor{flex:0 0 auto}
   .lbrow .status{flex:1 1 100%;order:9}
@@ -647,8 +640,6 @@ header.site .kr{letter-spacing:.3em;padding-left:.3em}
 }
 .pi-stats .k{font-size:9.5px;font-weight:700;letter-spacing:.22em;color:var(--text-mute);margin-bottom:5px}
 .pi-stats .v{font-family:var(--display);font-weight:700;font-size:19px;color:var(--text)}
-.pi-champs{display:flex;gap:6px}
-.pi-champs .champ{width:34px;height:34px}
 .pm-rep .crest{width:15px;height:15px;vertical-align:-3px;margin-right:2px}
 .ct-list{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:9px}
 .ct-add{display:flex;gap:8px}
@@ -689,7 +680,7 @@ header.site .kr{letter-spacing:.3em;padding-left:.3em}
 .dex-row .cond{font-size:11.5px;color:var(--text-dim)}
 
 
-/* ============ v7: 실플레이 모스트 챔프 · 공식 아이콘 · 포지션 필터 ============ */
+/* ============ v7: 공식 아이콘 · 포지션 필터 ============ */
 
 /* leaderboard position filter (BOMAKASE-style icon pills) */
 .lbfilter{
@@ -716,18 +707,6 @@ header.site .kr{letter-spacing:.3em;padding-left:.3em}
 /* official ranked mini-crest image */
 .crest.img{width:28px;height:28px;object-fit:contain;filter:drop-shadow(0 0 4px rgba(0,0,0,.6))}
 .pm-rep .crest.img{width:17px;height:17px;vertical-align:-4px;margin-right:3px}
-
-/* champion input on battle rows */
-.champin{
-  flex:none;width:96px;background:#06121c;border:1px solid var(--line);color:var(--text);
-  font-family:var(--body);font-size:11.5px;padding:6px 8px;outline:none;border-radius:3px;
-}
-.champin:focus{border-color:var(--gold)}
-.champin::placeholder{color:var(--text-mute)}
-.champtag{flex:none;display:flex;align-items:center}
-.champtag .champ{width:28px;height:28px}
-@media (max-width:640px){ .champin{width:74px} }
-
 
 /* ============ v8: 밝은 틸 배경 · 둥근 카드 (디자인 온리) ============ */
 
@@ -756,7 +735,7 @@ body{
   border-radius:14px; /* overflow:hidden 제거 — 패널 위에 걸터앉은 포로가 잘리지 않도록 */
 }
 .notice,.rank-note,.pick-note,.tol-box,.pair-box,.legend,.auto-note,.pair-note,.mvp-done{border-radius:10px}
-.btn,.minilink,.champin,.ct-add input,.modal textarea,#tolInput,.tol-presets button{border-radius:8px}
+.btn,.minilink,.ct-add input,.modal textarea,#tolInput,.tol-presets button{border-radius:8px}
 .modal{border-radius:14px;overflow:hidden}
 .pcard,.rcard,.pi-lane,.pi-record,.pi-stats .st,.pi-hist,.dex-list,.rlist .rcard{border-radius:10px}
 .pcard .chk{border-radius:6px}
@@ -807,7 +786,6 @@ input[type=text],input[type=number],select{border-radius:8px}
 
 /* 포지션 아이콘 밝게 */
 .lbrow .posic{color:#cfe5da;opacity:.95}
-.lbrow .champs .champ{border-radius:7px;border-color:#2a4a54}
 
 /* 필터: 참고 사이트처럼 캡슐 + 활성 원형 글로우 */
 .lbfilter{border-radius:999px;background:rgba(10,24,30,.8);border-color:#22424c;padding:8px 14px;gap:9px}
@@ -859,9 +837,8 @@ body{
 .lbrow .who .sub,.lbrow .wr .cnt,.lbhead{color:#8b9aa9}
 .lbrow .rk{color:#9fadbc}
 .lbrow .wr .bar{background:#0c1826}
-.lbrow .champs .champ{border-color:#2c4560}
 .lbfilter{background:rgba(12,22,36,.85);border-color:#26405a}
-.champin,.ct-add input,.modal textarea{background:#0a1524}
+.ct-add input,.modal textarea{background:#0a1524}
 
 /* 제목·라벨은 Pretendard로 통일 (세리프 제거) */
 header.site h1{

@@ -109,7 +109,6 @@ function normalizePlayer(p){
     mvp:Math.max(0,parseInt(p.mvp,10)||0),
     honor:Math.max(0,parseInt(p.honor,10)||0),
     customTitles:Array.isArray(p.customTitles)?p.customTitles.map(t=>String(t).slice(0,12)).slice(0,4):[],
-    mostChamps:Array.isArray(p.mostChamps)?p.mostChamps.map(t=>String(t).slice(0,16)).slice(0,3):[],
   };
 }
 function loadRoster(){
@@ -325,12 +324,11 @@ saveBtn.onclick=()=>{
     name,
     mainLane, mainTier:mt, mainDiv:md, mainScore:clampToTier(mt,mainScore),
     subLane,  subTier:st, subDiv:sd, subScore:clampToTier(st,subScore),
-    wins:0, losses:0, hist:[], mvp:0, honor:0, customTitles:[], mostChamps:[],
+    wins:0, losses:0, hist:[], mvp:0, honor:0, customTitles:[],
   };
   if(editingId){ const old=roster.find(p=>p.id===editingId);
     if(old){ rec.wins=old.wins||0; rec.losses=old.losses||0; rec.hist=old.hist||[];
-      rec.mvp=old.mvp||0; rec.honor=old.honor||0; rec.customTitles=old.customTitles||[];
-      rec.mostChamps=old.mostChamps||[]; } }
+      rec.mvp=old.mvp||0; rec.honor=old.honor||0; rec.customTitles=old.customTitles||[]; } }
   if(editingId){ const i=roster.findIndex(p=>p.id===editingId); roster[i]=rec; }
   else roster.push(rec);
   persist(); resetForm(); renderRoster();
@@ -432,37 +430,6 @@ function badgesHTML(p,rank,max){
   return arr.slice(0,max||99).join('')||'<span class="tbadge none">—</span>';
 }
 
-//============ 모스트 챔프 아이콘 (Riot DDragon) ============
-let CHAMP_MAP=null;
-function fillChampDL(){
-  const dl=document.getElementById('champDL');
-  if(!dl||!CHAMP_MAP||!Array.isArray(CHAMP_MAP._names))return;
-  dl.innerHTML=CHAMP_MAP._names.map(n=>`<option value="${esc(n)}">`).join('');
-}
-function loadChampMap(){
-  try{
-    const cached=localStorage.getItem('lol_champ_map_v2');
-    if(cached){ CHAMP_MAP=JSON.parse(cached); fillChampDL(); return; }
-  }catch(e){}
-  if(typeof fetch!=='function')return;
-  fetch('https://ddragon.leagueoflegends.com/api/versions.json')
-    .then(r=>r.json())
-    .then(vers=>fetch(`https://ddragon.leagueoflegends.com/cdn/${vers[0]}/data/ko_KR/champion.json`)
-      .then(r=>r.json()).then(data=>{
-        const m={_ver:vers[0],_names:[]};
-        Object.values(data.data).forEach(c=>{
-          m._names.push(c.name);
-          m[c.name.replace(/\s/g,'').toLowerCase()]=c.id;   // 한글 이름
-          m[c.id.toLowerCase()]=c.id;                        // 영문 키
-        });
-        m._names.sort();
-        CHAMP_MAP=m;
-        try{localStorage.setItem('lol_champ_map_v2',JSON.stringify(m));}catch(e){}
-        fillChampDL(); renderRoster();
-        if(battle){try{renderBattle();}catch(e){}}
-      }))
-    .catch(()=>{});
-}
 // 라이엇 공식 포지션 아이콘 로드 (SVG를 인라인해 currentColor로 색을 물들임)
 function loadPosIcons(){
   try{
@@ -492,30 +459,6 @@ function loadPosIcons(){
     })
     .catch(()=>{});
 }
-function champIcon(name,count){
-  const raw=String(name);
-  const k=raw.replace(/\s/g,'').toLowerCase();
-  const id=CHAMP_MAP&&CHAMP_MAP[k];
-  const tip=count?`${esc(raw)} · ${count}회 플레이`:esc(raw);
-  if(id&&CHAMP_MAP._ver)
-    return `<img class="champ" loading="lazy" src="https://ddragon.leagueoflegends.com/cdn/${CHAMP_MAP._ver}/img/champion/${id}.png" alt="${esc(raw)}" title="${tip}">`;
-  return `<span class="champ txt" title="${tip}">${esc(raw.slice(0,3))}</span>`;
-}
-// 내전에서 실제 플레이한 챔피언 기반 모스트 (기록 없으면 예전 수동 입력값 폴백)
-function mostChampsOf(p){
-  const cnt={};
-  (p.hist||[]).forEach(h=>{
-    if(h.champ){ const k=String(h.champ).trim(); if(k)cnt[k]=(cnt[k]||0)+1; }
-  });
-  const played=Object.entries(cnt).sort((a,b)=>b[1]-a[1]).slice(0,3);
-  if(played.length) return played;                              // [[이름,횟수],...]
-  return (p.mostChamps||[]).slice(0,3).map(n=>[n,0]);
-}
-function champsHTML(p){
-  const arr=mostChampsOf(p);
-  return arr.length?arr.map(([n,c])=>champIcon(n,c)).join(''):'<span class="champ none">—</span>';
-}
-
 //============ 선수 순위 ============//============ 선수 순위 ============
 let lbLane='ALL';   // 리더보드 포지션 필터
 function renderLbFilter(){
@@ -565,7 +508,7 @@ function renderRanking(){
     listEl.innerHTML='<div class="notice">이 포지션을 주·부 라인으로 등록한 선수가 없어요.</div>';
     return;
   }
-  const head=`<div class="lbhead"><span>순위</span><span>소환사</span><span class="c">MMR</span><span class="c">명예</span><span class="c">티어</span><span>상태</span><span class="c">내전 승률</span><span class="c">포지션</span><span class="c">모스트 챔프</span></div>`;
+  const head=`<div class="lbhead"><span>순위</span><span>소환사</span><span class="c">MMR</span><span class="c">명예</span><span class="c">티어</span><span>상태</span><span class="c">내전 승률</span><span class="c">포지션</span></div>`;
   listEl.innerHTML=head+ranked.map((r,i)=>{
     const {p,rep}=r, rank=i+1;               // 필터 내 순위 (메달 표시용)
     const gRank=globalRank[p.id];            // 전체 순위 (칭호 판정용)
@@ -588,7 +531,6 @@ function renderRanking(){
         <div class="bar"><span style="width:${g?wr:0}%"></span></div>
       </span>
       <span class="posic" title="주 라인 ${LANE_NAME[p.mainLane]}">${laneSVG(p.mainLane)}</span>
-      <span class="champs">${champsHTML(p)}</span>
     </div>`;
   }).join('');
   listEl.querySelectorAll('[data-info]').forEach(el=>el.onclick=()=>openInfo(el.dataset.info));
@@ -886,7 +828,7 @@ function applyWin(winner){
       if(laneKey==='main') p.mainScore=next; else p.subScore=next;
       // 개인 전적 기록 (선수 정보창에 표시)
       if(won) p.wins=(p.wins||0)+1; else p.losses=(p.losses||0)+1;
-      p.hist=[{t:Date.now(),win:won,pos:r.pos,role:r.role,d:next-cur,champ:(r.champ||'')}].concat(p.hist||[]).slice(0,30);
+      p.hist=[{t:Date.now(),win:won,pos:r.pos,role:r.role,d:next-cur}].concat(p.hist||[]).slice(0,30);
     });
   }
   adj(battle.blue, rAvg, winner==='blue');
@@ -954,16 +896,12 @@ function teamPanel(cls,label,rows){
     const picked = swapPick===r.id?' picked':'';
     const sw = battle.settled?'':' swappable';
     const drag = battle.settled?'':' draggable="true"';
-    const champCell = battle.settled
-      ? (r.champ?`<span class="champtag">${champIcon(r.champ)}</span>`:'')
-      : `<input class="champin" list="champDL" data-champ="${r.id}" placeholder="챔피언" maxlength="16" value="${esc(r.champ||'')}">`;
     return `<div class="prow${sw}${picked}" data-id="${r.id}"${drag}>
       <span class="lico">${laneSVG(r.pos)}</span>
       <span class="pmain">
         <span class="top"><span class="rl ${roleCls}">${roleTxt}</span><span class="nm">${esc(p.name)}</span></span>
         <span class="bot">${LANE_NAME[r.pos]} · ${scoreBadge(tierKey,r.score)}</span>
       </span>
-      ${champCell}
       <span class="pscore">${r.score}</span>
     </div>`;
   }).join('');
@@ -1003,7 +941,7 @@ function renderBattle(){
       ${mvpBlock}
       <div class="winrow"><button class="btn ghost" id="undoWin">되돌리기</button></div>`;
   }
-  const swapHint = battle.settled?'':'<div class="swap-hint">선수를 클릭(또는 드래그)해 위치를 맞바꾸고, 챔피언 칸에 플레이할 챔피언을 적어두면 전적·모스트 챔프에 기록돼요</div>';
+  const swapHint = battle.settled?'':'<div class="swap-hint">선수를 클릭(또는 드래그)해 위치를 맞바꿀 수 있어요</div>';
   const pairNote = (battle.pairsApplied&&battle.pairsApplied.length)?`<div class="pair-note">🔗 같은 팀 고정 적용 — ${battle.pairsApplied.map(pr=>pr.map(esc).join(' + ')).join(' · ')}</div>`:'';
   const autoNote = auto>0?`<div class="auto-note">⚠ 주·부 라인에 없는 포지션은 자동으로 배치했어요(자동 ${auto}명, 점수 ×0.8 보정). 예: 서폿 가능자가 부족하면 누군가 서폿으로 자동 배치돼요.</div>`:'';
   const histLink = roundHistory.length>1?`<button class="minilink" id="resetHistory">섞기 기록 초기화 (최근 ${roundHistory.length}판 기억 중)</button>`:'';
@@ -1031,17 +969,8 @@ function renderBattle(){
   </div>`;
 
   // bind
-  res.querySelectorAll('.champin').forEach(inp=>{
-    inp.onclick=e=>e.stopPropagation();
-    inp.onmousedown=e=>e.stopPropagation();
-    inp.ondragstart=e=>{e.preventDefault();e.stopPropagation();};
-    inp.onchange=()=>{
-      const row=[...battle.blue,...battle.red].find(r=>r.id===inp.dataset.champ);
-      if(row)row.champ=inp.value.trim().slice(0,16);
-    };
-  });
   res.querySelectorAll('.prow.swappable').forEach(el=>{
-    el.onclick=e=>{ if(e.target.closest('.champin'))return; onRowClick(el.dataset.id); };
+    el.onclick=()=>onRowClick(el.dataset.id);
     el.ondragstart=e=>{e.dataTransfer.setData('text/plain',el.dataset.id);el.classList.add('dragging');};
     el.ondragend=()=>el.classList.remove('dragging');
     el.ondragover=e=>{e.preventDefault();el.classList.add('dragover');};
@@ -1240,9 +1169,6 @@ function openInfo(id){
       ${laneRow('부',p.subLane,p.subTier,p.subDiv,p.subScore)}
     </div>
 
-    <div class="pi-sec">모스트 챔피언 <span>내전 플레이 기록 기준</span></div>
-    <div class="pi-champs">${champsHTML(p)}</div>
-
     <div class="pi-sec">최근 경기 상세 <span>${p.hist?p.hist.length:0}판</span></div>
     <div class="pi-hist">${histRows}</div>
 
@@ -1332,6 +1258,5 @@ document.getElementById('importData').onclick=()=>{
   try{ const tv=localStorage.getItem('lol_tol'); setTol(tv!=null?+tv:30); }catch(e){ setTol(30); }
   persist(); // v2 → v3 마이그레이션 결과 저장 (점수 필드 포함)
   renderRoster();
-  loadChampMap();   // 모스트 챔프 아이콘 (Riot DDragon)
   loadPosIcons();   // 라이엇 공식 포지션 아이콘
 })();
