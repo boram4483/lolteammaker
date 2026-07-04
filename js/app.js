@@ -181,7 +181,9 @@ setTimeout(()=>{
 let editingId=null;
 let mainLane=null, subLane=null;
 const selected=new Set();
-let roundHistory=[];                // 최근 판들 {team, lane} — 팀/라인 겹침 방지
+let roundHistory=[];                // 최근 판들 {team, lane, role} — 팀/라인/부라인당번 겹침 방지
+try{ roundHistory=JSON.parse(localStorage.getItem('lol_round_hist')||'[]')||[]; }catch(e){}
+function persistHistory(){ try{ localStorage.setItem('lol_round_hist',JSON.stringify(roundHistory)); }catch(e){} }
 const HISTORY_MAX=5;
 let battle=null;                    // 현재 결과 {blue, red, pm, settled}
 let swapPick=null;                  // 수동 교체용 선택중인 선수
@@ -198,6 +200,8 @@ function eloParams(tierKey){
   return {K:32, D:400, minStep:1};                       // 그 외 티어 : 기존과 동일
 }
 let balanceTol=30;                  // 밸런스 허용 점수차 (수동 조절 가능)
+let mixLevel=4;                     // 부라인 섞기: 0 주라인만 / 2 조금 / 4 골고루 / 10 자유
+const MIX_W={0:1e6,2:100,4:25,10:0}; // 부라인 1명당 점수차 환산 패널티 (팀 구성 선택 시)
 
 //============ 같은 팀 묶기 (pairs) ============
 const PAIR_MAX=4;
@@ -271,12 +275,22 @@ function setTol(v){
   v=Math.max(0,Math.min(500,Math.round(v||0)));
   balanceTol=v; if(tolInput) tolInput.value=v;
   try{localStorage.setItem('lol_tol',v);}catch(e){}
-  document.querySelectorAll('.tol-presets button').forEach(b=>b.classList.toggle('on',+b.dataset.tol===v));
+  document.querySelectorAll('.tol-presets button[data-tol]').forEach(b=>b.classList.toggle('on',+b.dataset.tol===v));
 }
 if(tolInput){
   tolInput.onchange=()=>setTol(+tolInput.value);
-  document.querySelectorAll('.tol-presets button').forEach(b=>b.onclick=()=>setTol(+b.dataset.tol));
+  document.querySelectorAll('.tol-presets button[data-tol]').forEach(b=>b.onclick=()=>setTol(+b.dataset.tol));
 }
+
+// 부라인 섞기 컨트롤
+function setMix(v){
+  if(!(v in MIX_W)) v=4;
+  mixLevel=v;
+  try{localStorage.setItem('lol_mix',v);}catch(e){}
+  document.querySelectorAll('.tol-presets button[data-mix]').forEach(b=>b.classList.toggle('on',+b.dataset.mix===v));
+}
+document.querySelectorAll('.tol-presets button[data-mix]').forEach(b=>b.onclick=()=>setMix(+b.dataset.mix));
+(function(){ let m=4; try{const s=localStorage.getItem('lol_mix'); if(s!==null&&s!=='')m=+s;}catch(e){} setMix(m); })();
 
 // 점수표 legend 채우기
 (function(){
@@ -744,9 +758,10 @@ function objKey(res,split){
 }
 function teamMapOf(sol){const m={};sol.split.blue.forEach(r=>m[r.id]='B');sol.split.red.forEach(r=>m[r.id]='R');return m;}
 function laneMapOf(sol){const m={};for(const id in sol.res)m[id]=sol.res[id].pos;return m;}
+function roleMapOf(sol){const m={};for(const id in sol.res)m[id]=sol.res[id].role;return m;}
 function varietyPenalty(sol){
   if(roundHistory.length===0) return 0;
-  const tm=teamMapOf(sol), lm=laneMapOf(sol);
+  const tm=teamMapOf(sol), lm=laneMapOf(sol), rm=roleMapOf(sol);
   const ids=Object.keys(tm);
   let pen=0;
   roundHistory.forEach((h,idx)=>{
@@ -756,6 +771,8 @@ function varietyPenalty(sol){
       if(h.team[a]!==undefined && h.team[b]!==undefined && tm[a]===tm[b] && h.team[a]===h.team[b]) pen+=3*w;
     }
     ids.forEach(id=>{ if(h.lane[id]!==undefined && h.lane[id]===lm[id]) pen+=1*w; });
+    // 부라인/자동 "당번"이 같은 사람에게 반복되지 않도록 강하게 패널티 → 판마다 로테이션
+    ids.forEach(id=>{ if(h.role && rm[id]!=='main' && h.role[id]===rm[id]) pen+=5*w; });
   });
   return pen;
 }
@@ -778,17 +795,18 @@ function generate(players){
     }
   }
   if(!best) return null; // 묶기 조건을 만족하는 조합이 없음
-  // 다양성 후보: 최적해 기준으로 자동배치 동일, 부라인 균형은 더 나빠지지 않고,
-  // 부라인은 최대 +2명(한 쌍)까지 허용 → 판마다 라인·팀이 실제로 섞임 (주라인 "위주"는 유지)
+  // 다양성 후보: 자동배치 동일, 부라인 균형(양팀 동일)은 유지,
+  // 부라인 인원은 "부라인 섞기" 설정만큼 최소치+mixLevel까지 허용
   let cand=pool.filter(s=>
     s.ok.auto===best.ok.auto &&
     s.ok.subImb<=best.ok.subImb &&
-    s.ok.sub<=best.ok.sub+2 &&
+    s.ok.sub<=best.ok.sub+mixLevel &&
     s.ok.diff<=best.ok.diff+TOL);
   if(cand.length===0) cand=[best];
-  cand.forEach(s=>{ s.variety=varietyPenalty(s); });
-  // 최근 판들과 겹침이 적은 조합 우선 → 같으면 부라인 적은 쪽 → 점수차 작은 쪽
-  cand.sort((a,b)=> a.variety-b.variety || a.ok.sub-b.ok.sub || a.ok.diff-b.ok.diff || (Math.random()-0.5));
+  const W=(mixLevel in MIX_W)?MIX_W[mixLevel]:25;
+  cand.forEach(s=>{ s.variety=varietyPenalty(s); s.cost=s.ok.diff+s.ok.sub*W; });
+  // 최근 판들과 팀·라인·부라인당번이 덜 겹치는 조합 우선 → 그 다음 (점수차+부라인 패널티) 최소
+  cand.sort((a,b)=> a.variety-b.variety || a.cost-b.cost || (Math.random()-0.5));
   return cand[0];
 }
 
@@ -844,8 +862,9 @@ function makeBattle(){
   if(players.length!==10){toast('정확히 10명을 선택하세요');return;}
   const sol=generate(players);
   if(!sol){ toast('같은 팀 묶기 조건을 만족하는 조합을 못 찾았어요 — 묶기를 줄여보세요'); return; }
-  roundHistory.push({team:teamMapOf(sol),lane:laneMapOf(sol)});
+  roundHistory.push({team:teamMapOf(sol),lane:laneMapOf(sol),role:roleMapOf(sol)});
   if(roundHistory.length>HISTORY_MAX) roundHistory.shift();
+  persistHistory();
   battle={
     blue: sol.split.blue.map(r=>({id:r.id,pos:r.pos,role:r.role,score:r.score})),
     red:  sol.split.red.map(r=>({id:r.id,pos:r.pos,role:r.role,score:r.score})),
@@ -1076,7 +1095,7 @@ function renderBattle(){
   const u=document.getElementById('undoWin'); if(u)u.onclick=undoWin;
   const rm=document.getElementById('battleRemake'); if(rm)rm.onclick=makeBattle;
   const cp=document.getElementById('copyTeams'); if(cp)cp.onclick=copyTeams;
-  const rh=document.getElementById('resetHistory'); if(rh)rh.onclick=()=>{roundHistory=[];renderBattle();toast('섞기 기록을 비웠어요');};
+  const rh=document.getElementById('resetHistory'); if(rh)rh.onclick=()=>{roundHistory=[];persistHistory();renderBattle();toast('섞기 기록을 비웠어요');};
 
   res.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
