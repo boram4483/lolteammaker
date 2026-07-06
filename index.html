@@ -110,7 +110,9 @@
       <div class="panel-b">
         <div class="toolbar" style="margin-bottom:14px">
           <div class="spacer"></div>
+          <button class="minilink" id="xlsxImportBtn">📥 엑셀 전적 가져오기</button>
           <button class="minilink" id="backupBtn">데이터 백업 / 불러오기</button>
+          <input type="file" id="xlsxFile" accept=".xlsx,.xls,.csv" style="display:none">
         </div>
         <div id="rosterList" class="rlist"></div>
       </div>
@@ -232,6 +234,13 @@
         <button class="btn ghost" id="closeModal">닫기</button>
       </div>
     </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="xlsxModalBg">
+  <div class="modal wide">
+    <div class="mh">📥 엑셀 전적 가져오기</div>
+    <div class="mb" id="xlsxBody"></div>
   </div>
 </div>
 

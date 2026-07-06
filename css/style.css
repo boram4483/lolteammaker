@@ -284,6 +284,27 @@ input::placeholder{color:var(--text-mute)}
   font-family:ui-monospace,monospace;font-size:12px;padding:12px;resize:vertical;outline:none}
 .modal textarea:focus{border-color:var(--gold)}
 .modal .mb p{font-size:12px;color:var(--text-mute);margin:0 0 12px}
+/* 칭호 도감 — 화면(100% 배율)에서 안 잘리게 높이를 제한하고 내용은 스크롤 */
+.dex-modal{max-height:min(82vh,720px);display:flex;flex-direction:column}
+.dex-modal .mh{flex:none}
+.dex-modal .mb{overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;scrollbar-width:thin}
+.dex-modal .mb::-webkit-scrollbar{width:8px}
+.dex-modal .mb::-webkit-scrollbar-thumb{background:var(--gold-dim);border-radius:8px}
+@media(max-height:700px){.dex-modal{max-height:92vh}}
+/* 엑셀 전적 가져오기 */
+.modal.wide{max-width:640px}
+.ximp-mode{display:flex;flex-wrap:wrap;gap:6px 22px;margin:0 0 12px;font-size:12.5px;color:var(--text-dim)}
+.ximp-mode label{display:flex;align-items:center;gap:6px;cursor:pointer}
+.ximp-mode b{color:var(--gold)}
+.ximp-list{border:1px solid var(--line-soft);max-height:46vh;overflow-y:auto;margin-bottom:14px;border-radius:10px}
+.ximp-row{display:grid;grid-template-columns:1fr auto minmax(150px,42%);gap:10px;align-items:center;
+  padding:8px 12px;border-bottom:1px solid var(--line-soft);font-size:12.5px}
+.ximp-row:last-child{border-bottom:none}
+.ximp-row .xn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.ximp-row .xr{color:var(--text-mute);font-family:var(--display);font-size:11.5px;white-space:nowrap}
+.ximp-row select{background:#06121c;border:1px solid var(--line);color:var(--text);font-size:12px;padding:6px 8px;border-radius:8px;max-width:100%}
+.ximp-row select:focus{border-color:var(--gold);outline:none}
+@media(max-width:560px){.ximp-row{grid-template-columns:1fr auto}.ximp-row select{grid-column:1/-1}}
 
 footer.site{text-align:center;padding:40px 16px 10px;color:var(--text-mute);font-size:12px;letter-spacing:.04em}
 footer.site .made{font-family:var(--display);letter-spacing:.1em;color:var(--gold)}
@@ -315,6 +336,8 @@ footer.site .made b{color:var(--gold-bright)}
 .legend .lg-body{padding:4px 14px 14px;display:grid;grid-template-columns:repeat(2,1fr);gap:6px 18px}
 .lg-row{display:flex;align-items:center;justify-content:space-between;font-size:12px;border-bottom:1px solid var(--line-soft);padding-bottom:4px}
 .lg-row .nm{font-weight:700}.lg-row .rg{color:var(--text-mute);font-family:var(--display);font-size:11px}
+.lg-note{grid-column:1/-1;margin-top:6px;font-size:11.5px;line-height:1.6;color:var(--text-mute)}
+.lg-note b{color:var(--gold)}
 
 /* 팀 결과: 교체 가능한 row */
 .prow.swappable{cursor:grab}
@@ -674,7 +697,9 @@ header.site .kr{letter-spacing:.3em;padding-left:.3em}
 .dex-modal{max-width:460px}
 .dex-intro{font-size:12px;color:var(--text-dim);margin:0 0 14px;line-height:1.6}
 .dex-intro b{color:var(--gold)}
-.dex-list{border:1px solid var(--line-soft)}
+.dex-cat{font-size:11px;font-weight:800;letter-spacing:.14em;color:var(--gold-dim);margin:14px 0 6px;text-transform:uppercase}
+.dex-cat:first-of-type{margin-top:0}
+.dex-list{border:1px solid var(--line-soft);margin-bottom:4px}
 .dex-row{display:flex;align-items:center;gap:12px;padding:9px 12px;border-bottom:1px solid var(--line-soft)}
 .dex-row:last-child{border-bottom:none}
 .dex-row .tbadge{flex:none}
@@ -976,4 +1001,81 @@ header.site h1{
 @media (prefers-reduced-motion:reduce){
   .poro,.poro-parade img{animation:none}
   .poro.perch{transform:translateY(-76%)}
+}
+
+/* ============ v11: 헥스테크 럭스 — 모션 그래픽 ============ */
+#fxCanvas{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none}
+.wrap{position:relative;z-index:1}
+
+@media (prefers-reduced-motion:no-preference){
+
+/* 타이틀 — 골드가 흐르는 광택 */
+header.site h1{
+  background:linear-gradient(100deg,#a5824a 0%,#d8bc80 30%,#fdf3d8 44%,#ffe6a6 50%,#fdf3d8 56%,#d8bc80 70%,#a5824a 100%);
+  background-size:230% 100%;
+  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
+  animation:goldSheen 7s ease-in-out infinite;
+}
+@keyframes goldSheen{0%,100%{background-position:115% 0}50%{background-position:-15% 0}}
+
+/* 헤더 다이아 장식 — 은은한 맥동 */
+.orn{animation:ornGlow 4.2s ease-in-out infinite}
+@keyframes ornGlow{
+  0%,100%{text-shadow:0 0 8px rgba(200,170,110,.5)}
+  50%{text-shadow:0 0 16px rgba(244,220,160,.95),0 0 30px rgba(200,170,110,.4)}
+}
+
+/* 패널 — 탭 전환 시 순차 등장 */
+.view.active .panel{animation:panelUp .55s cubic-bezier(.2,.75,.3,1) backwards}
+.view.active .panel:nth-of-type(2){animation-delay:.09s}
+.view.active .panel:nth-of-type(3){animation-delay:.18s}
+@keyframes panelUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+
+/* 패널 코너 장식 트랜지션 (호버 효과는 아래 마우스 전용 블록에) */
+.panel::before,.panel::after{transition:width .35s ease,height .35s ease,border-color .35s ease}
+
+/* 버튼 — 광택 스윕 준비 (발동은 마우스 전용 블록에) */
+.btn{position:relative;overflow:hidden}
+.btn::after{
+  content:"";position:absolute;top:-2px;bottom:-2px;left:-75%;width:42%;
+  background:linear-gradient(105deg,transparent,rgba(255,246,220,.34),transparent);
+  transform:skewX(-18deg);pointer-events:none;opacity:0;
+}
+@keyframes btnSheen{0%{left:-75%;opacity:1}100%{left:135%;opacity:1}}
+
+/* 리더보드 — 1위 행 상시 시머 + 메달 글로우 */
+.lbrow{transition:transform .2s ease,border-color .25s ease,box-shadow .25s ease}
+.lbrow.top1{position:relative;overflow:hidden}
+.lbrow.top1::before{
+  content:"";position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(115deg,transparent 34%,rgba(244,220,160,.13) 50%,transparent 66%);
+  background-size:260% 100%;
+  animation:rowSheen 5.6s linear infinite;
+}
+@keyframes rowSheen{from{background-position:190% 0}to{background-position:-90% 0}}
+.lbrow.top1 .rk{animation:medalPulse 2.8s ease-in-out infinite}
+@keyframes medalPulse{
+  0%,100%{text-shadow:0 0 6px rgba(240,203,110,.35)}
+  50%{text-shadow:0 0 14px rgba(255,228,150,.9)}
+}
+
+/* 탭 언더라인 — 중앙에서 펼쳐짐 */
+.tab.active::after{animation:tabIn .32s cubic-bezier(.2,.75,.3,1)}
+@keyframes tabIn{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+
+/* 모달 — 살짝 떠오르며 등장 */
+.modal-bg.open .modal{animation:modalIn .28s cubic-bezier(.2,.8,.3,1.04)}
+@keyframes modalIn{from{opacity:0;transform:translateY(12px) scale(.97)}to{opacity:1;transform:none}}
+
+}
+
+@media (prefers-reduced-motion:reduce){
+  #fxCanvas{display:none}
+}
+
+/* 호버 효과 — 마우스 기기 전용 (터치 기기에서 탭 후 효과가 걸린 채 남는 것 방지) */
+@media (prefers-reduced-motion:no-preference) and (hover:hover) and (pointer:fine){
+  .panel:hover::before,.panel:hover::after{width:22px;height:22px;border-color:var(--gold)}
+  .btn:hover::after{animation:btnSheen .65s ease}
+  .lbrow:hover{transform:translateY(-2px)}
 }
