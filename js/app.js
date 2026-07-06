@@ -101,8 +101,8 @@ function normalizePlayer(p){
   return {
     id:p.id||('p'+Date.now()+Math.random().toString(36).slice(2,6)),
     name:String(p.name).slice(0,18),
-    mainLane:p.mainLane, mainTier:mt, mainDiv:md, mainScore:clampToTier(mt,ms),
-    subLane:p.subLane, subTier:st, subDiv:sd, subScore:clampToTier(st,ss),
+    mainLane:p.mainLane, mainTier:mt, mainDiv:md, mainScore:Math.max(0,Math.round(ms)),
+    subLane:p.subLane, subTier:st, subDiv:sd, subScore:Math.max(0,Math.round(ss)),
     wins:Math.max(0,parseInt(p.wins,10)||0),
     losses:Math.max(0,parseInt(p.losses,10)||0),
     hist:Array.isArray(p.hist)?p.hist.slice(0,30):[],
@@ -191,13 +191,11 @@ const UNDO_KEY='lol_inhouse_undo_v1';
 let undoStack=[];                   // 승리 되돌리기 — localStorage에 저장해 새로고침해도 유지
 try{ undoStack=JSON.parse(localStorage.getItem(UNDO_KEY)||'[]')||[]; }catch(e){ undoStack=[]; }
 function persistUndo(){ try{ localStorage.setItem(UNDO_KEY,JSON.stringify(undoStack.slice(-5))); }catch(e){} }
-// 티어별 승리 점수 변동 계수.
-// 점수 폭이 400인 티어는 K=32, 마스터 이상(폭 1000)은 폭에 비례해 크게 → 스윙이 "폭의 약 8%"로 일정.
-// (예전에는 마스터도 K=32라, 폭이 넓은 고티어에선 기대승률이 포화돼 +1밖에 안 올랐음)
+// 승패 점수 변동 계수 — 모든 티어 동일 (티어별 차등 없음).
+// 팽팽한 경기(기대승률 50%)면 ±25, 언더독 승리는 최대 +40대, 어떤 경우에도 최소 ±10 보장.
+// D=1000: 점수차가 커도 기대승률이 천천히 포화 → 고티어에서도 변동 폭이 쪼그라들지 않음.
 function eloParams(tierKey){
-  const idx=TIER_MAP[tierKey].idx;
-  if(idx>=MASTER_IDX) return {K:80, D:1000, minStep:8};  // 마스터+ : 크게 움직이고, 최소 ±8 보장
-  return {K:32, D:400, minStep:1};                       // 그 외 티어 : 기존과 동일
+  return {K:50, D:1000, minStep:10};
 }
 let balanceTol=30;                  // 밸런스 허용 점수차 (수동 조절 가능)
 let mixLevel=4;                     // 부라인 섞기: 0 주라인만 / 2 조금 / 4 골고루 / 10 자유
@@ -299,7 +297,8 @@ document.querySelectorAll('.tol-presets button[data-mix]').forEach(b=>b.onclick=
     const [lo,hi]=tierBand(t.key);
     const rg = t.div ? `${lo}–${tierBase(t.key)+399}` : `${lo}–${hi} · LP 입력`;
     return `<div class="lg-row"><span class="nm" style="color:${t.color}">${t.name}</span><span class="rg">${rg}</span></div>`;
-  }).join('');
+  }).join('')
+  +`<div class="lg-note">※ 위 점수는 <b>등록 시 시작점</b>이에요. 승패에 따라 점수는 범위 밖으로도 자유롭게 오르내리지만, 표시되는 티어는 등록한 그대로 유지됩니다. (한 판당 변동 폭: 팽팽하면 ±25 안팎, 최소 ±10)</div>`;
 })();
 
 //============ tabs ============
@@ -359,8 +358,8 @@ saveBtn.onclick=()=>{
   const rec={
     id: editingId||('p'+Date.now()+Math.random().toString(36).slice(2,6)),
     name,
-    mainLane, mainTier:mt, mainDiv:md, mainScore:clampToTier(mt,mainScore),
-    subLane,  subTier:st, subDiv:sd, subScore:clampToTier(st,subScore),
+    mainLane, mainTier:mt, mainDiv:md, mainScore:Math.max(0,Math.round(mainScore)),
+    subLane,  subTier:st, subDiv:sd, subScore:Math.max(0,Math.round(subScore)),
     wins:0, losses:0, hist:[], mvp:0, honor:0, customTitles:[],
   };
   if(editingId){ const old=roster.find(p=>p.id===editingId);
@@ -433,31 +432,78 @@ function renderRoster(){
 function flash(el){el.style.borderColor='var(--red)';setTimeout(()=>el.style.borderColor='',600);}
 
 //============ 칭호 (titles) ============
+// cat: 도감에서 묶어 보여주는 분류 (rank 순위 / streak 기세 / skill 실력 / honor 명예 / life 생활)
 const TITLE_DEFS=[
-  {k:'top',  e:'👑', n:'정상의 자리', c:'#f3cb6e', d:'리더보드 1위 (1판 이상)'},
-  {k:'place',e:'🐣', n:'배치중',     c:'#e3bb58', d:'내전 3판 미만'},
-  {k:'hot',  e:'🔥', n:'연승가도',   c:'#ff8a5c', d:'최근 3연승 중'},
-  {k:'swamp',e:'💦', n:'연패의늪',   c:'#7fa8ff', d:'최근 3연패 중'},
-  {k:'carry',e:'👨‍🍳', n:'캐리머신',   c:'#0ac8b9', d:'5판 이상 · 승률 70% 이상'},
-  {k:'grief',e:'🌧️', n:'억까당함',   c:'#9fb1bd', d:'5판 이상 · 승률 30% 이하'},
-  {k:'pog',  e:'🎖️', n:'POG 콜렉터', c:'#b95fd6', d:'POG/MVP 3회 이상'},
-  {k:'flex', e:'🧩', n:'만능 일꾼',  c:'#4cb6ac', d:'주·부가 아닌 라인(자동 배치)으로 3판 이상'},
-  {k:'iron', e:'🦾', n:'개근왕',     c:'#c8aa6e', d:'내전 10판 이상 참여'},
+  // ── 순위 ──
+  {k:'top',    cat:'rank',  e:'👑', n:'정상의 자리',   c:'#f3cb6e', d:'전체 순위 1위 (1판 이상)'},
+  {k:'second', cat:'rank',  e:'🥈', n:'만년 2인자',    c:'#c9d4e0', d:'전체 순위 2위 (3판 이상) — 한 끗이 모자라…'},
+  {k:'gate',   cat:'rank',  e:'🚪', n:'협곡의 수문장', c:'#8a94a6', d:'전체 순위 꼴찌 (5명 이상 명단 · 3판 이상) — 바닥은 내가 지킨다'},
+  // ── 기세 ──
+  {k:'hot',    cat:'streak',e:'🔥', n:'연승가도',      c:'#ff8a5c', d:'최근 3연승 중'},
+  {k:'train',  cat:'streak',e:'🚂', n:'폭주기관차',    c:'#ff5c5c', d:'최근 5연승 중 — 아무도 못 말림'},
+  {k:'swamp',  cat:'streak',e:'💦', n:'연패의늪',      c:'#7fa8ff', d:'최근 3연패 중'},
+  {k:'abyss',  cat:'streak',e:'🕳️', n:'심연 속으로',   c:'#6a7bb0', d:'최근 5연패 중 — 바닥 밑에 지하실이 있었다'},
+  {k:'phoenix',cat:'streak',e:'🌅', n:'불사조',        c:'#ffb45c', d:'3연패 이상 찍고 직전 판 승리 — 잿더미에서 부활'},
+  {k:'coaster',cat:'streak',e:'🎢', n:'롤러코스터',    c:'#d67fd6', d:'최근 6판 승패가 정확히 번갈아 — 심장에 안 좋음'},
+  // ── 실력 ──
+  {k:'carry',  cat:'skill', e:'👨‍🍳', n:'캐리머신',      c:'#0ac8b9', d:'5판 이상 · 승률 70% 이상'},
+  {k:'grief',  cat:'skill', e:'🌧️', n:'억까당함',      c:'#9fb1bd', d:'5판 이상 · 승률 30% 이하 — 팀운이 없을 뿐'},
+  {k:'flawless',cat:'skill',e:'💎', n:'무결점',        c:'#7fe8ff', d:'3판 이상 · 아직 무패'},
+  {k:'hope',   cat:'skill', e:'🕯️', n:'존버는 승리한다',c:'#e0c98f', d:'3판 이상 · 아직 무승 — 다음 판은 반드시 이긴다'},
+  {k:'balance',cat:'skill', e:'⚖️', n:'황금 밸런스',   c:'#b8c98f', d:'10판 이상 · 승률 45~55% — 세상의 균형을 지키는 자'},
+  {k:'giant',  cat:'skill', e:'🗡️', n:'자이언트 킬러', c:'#e25555', d:'약팀으로 강팀을 격파, 한 판에 +35점 이상 획득한 적 있음'},
+  {k:'climber',cat:'skill', e:'📈', n:'초과 달성',     c:'#5cdb95', d:'점수가 등록 티어의 상한선을 돌파 — 티어가 실력을 못 따라옴'},
+  {k:'defense',cat:'skill', e:'📉', n:'티어 방어전',   c:'#f0a35c', d:'점수가 등록 티어의 시작점 아래로 — 티어의 명예를 지켜라'},
+  // ── 명예 ──
+  {k:'pog',    cat:'honor', e:'🎖️', n:'POG 콜렉터',    c:'#b95fd6', d:'POG/MVP 3회 이상'},
+  {k:'mvpgod', cat:'honor', e:'🏆', n:'MVP 그 자체',   c:'#f3cb6e', d:'POG/MVP 6회 이상 — 이쯤 되면 시상식 주인공'},
+  // ── 생활 ──
+  {k:'place',  cat:'life',  e:'🐣', n:'배치중',        c:'#e3bb58', d:'내전 3판 미만'},
+  {k:'iron',   cat:'life',  e:'🦾', n:'개근왕',        c:'#c8aa6e', d:'내전 10판 이상 참여'},
+  {k:'addict', cat:'life',  e:'☕', n:'내전 중독',     c:'#b08d5c', d:'내전 20판 이상 참여 — 오늘도 한 판?'},
+  {k:'landlord',cat:'life', e:'🏰', n:'협곡의 터줏대감',c:'#d6a75f', d:'내전 40판 이상 참여 — 사실상 상주 인원'},
+  {k:'flex',   cat:'life',  e:'🧩', n:'만능 일꾼',     c:'#4cb6ac', d:'주·부가 아닌 라인(자동 배치)으로 3판 이상'},
+  {k:'twojob', cat:'life',  e:'🎭', n:'투잡러',        c:'#8fb0e0', d:'부 라인으로 5판 이상 — 부캐가 본캐'},
+  {k:'oneway', cat:'life',  e:'🛤️', n:'외길인생',      c:'#a3b18a', d:'최근 10판 이상 중 80%를 한 라인으로 — 장인의 길'},
+  {k:'owl',    cat:'life',  e:'🦉', n:'심야의 협곡',   c:'#9f8fd6', d:'새벽 0~6시 경기 3판 이상 — 잠은 죽어서 자는 것'},
 ];
+const TITLE_CATS={rank:'순위',streak:'기세',skill:'실력',honor:'명예',life:'생활'};
 const TD=Object.fromEntries(TITLE_DEFS.map(t=>[t.k,t]));
 function titlesOf(p,rank){
   const w=p.wins||0,l=p.losses||0,g=w+l,h=p.hist||[],t=[];
   const streak =n=>h.length>=n&&h.slice(0,n).every(x=>x.win);
   const lstreak=n=>h.length>=n&&h.slice(0,n).every(x=>!x.win);
+  // 순위
   if(rank===1&&g>0)t.push(TD.top);
-  if(g<3)t.push(TD.place);
-  if(streak(3))t.push(TD.hot);
-  if(lstreak(3))t.push(TD.swamp);
+  if(rank===2&&g>=3)t.push(TD.second);
+  if(rank===roster.length&&roster.length>=5&&g>=3)t.push(TD.gate);
+  // 기세 (연승·연패는 상위 칭호만 표시)
+  if(streak(5))t.push(TD.train); else if(streak(3))t.push(TD.hot);
+  if(lstreak(5))t.push(TD.abyss); else if(lstreak(3))t.push(TD.swamp);
+  if(h.length>=4&&h[0].win&&h[1]&&!h[1].win&&h[2]&&!h[2].win&&h[3]&&!h[3].win)t.push(TD.phoenix);
+  if(h.length>=6&&h.slice(0,6).every((x,i,a)=>i===0||x.win!==a[i-1].win))t.push(TD.coaster);
+  // 실력
   if(g>=5&&w/g>=0.7)t.push(TD.carry);
   if(g>=5&&w/g<=0.3)t.push(TD.grief);
-  if((p.mvp||0)>=3)t.push(TD.pog);
+  if(g>=3&&l===0)t.push(TD.flawless);
+  if(g>=3&&w===0)t.push(TD.hope);
+  if(g>=10&&w/g>=0.45&&w/g<=0.55)t.push(TD.balance);
+  if(h.some(x=>x.win&&x.d>=35))t.push(TD.giant);
+  {const rep=repOf(p),[lo,hi]=tierBand(rep.tierKey);
+   if(rep.score>hi)t.push(TD.climber);
+   if(rep.score<lo)t.push(TD.defense);}
+  // 명예 (상위 칭호만 표시)
+  if((p.mvp||0)>=6)t.push(TD.mvpgod); else if((p.mvp||0)>=3)t.push(TD.pog);
+  // 생활
+  if(g<3)t.push(TD.place);
+  if(g>=40)t.push(TD.landlord); else if(g>=20)t.push(TD.addict); else if(g>=10)t.push(TD.iron);
   if(h.filter(x=>x.role==='auto').length>=3)t.push(TD.flex);
-  if(g>=10)t.push(TD.iron);
+  if(h.filter(x=>x.role==='sub').length>=5)t.push(TD.twojob);
+  if(h.length>=10){
+    const cnt={}; h.forEach(x=>{cnt[x.pos]=(cnt[x.pos]||0)+1;});
+    if(Math.max(...Object.values(cnt))/h.length>=0.8)t.push(TD.oneway);
+  }
+  if(h.filter(x=>{const hr=new Date(x.t).getHours();return hr>=0&&hr<6;}).length>=3)t.push(TD.owl);
   return t;
 }
 function titleBadge(t){return `<span class="tbadge" style="color:${t.c};border-color:${t.c}" title="${esc(t.d||'')}">${t.e}${esc(t.n)}</span>`;}
@@ -909,7 +955,8 @@ function onRowClick(id){
   renderBattle();
 }
 
-// 승리 반영: 친 라인의 점수만, 그 티어 범위 안에서만 변동 (티어 이동 없음)
+// 승리 반영: 친 라인의 점수만 변동. 점수는 티어 범위 제한 없이 자유롭게 오르내리지만
+// 표시되는 티어는 등록한 그대로 유지 (예: 마스터 2800에서 지면 2790 — 여전히 마스터)
 function applyWin(winner){
   if(!battle||battle.settled)return;
   // 승리 반영 "직전" 전체 명단을 통째로 백업 — 되돌리기를 놓쳤을 때 이 시점으로 복구 가능
@@ -928,7 +975,7 @@ function applyWin(winner){
       let d=Math.round(K*((won?1:0)-E));
       if(won&&d<minStep)d=minStep; if(!won&&d>-minStep)d=-minStep;  // 이기면 최소 +minStep, 지면 최소 -minStep
       snap.push({id:p.id,lane:laneKey,prev:cur,w:p.wins||0,l:p.losses||0});
-      const next=clampToTier(tierKey,cur+d);    // 티어 범위 밖으로는 절대 안 나감
+      const next=Math.max(0,Math.round(cur+d)); // 티어 범위 제한 없음 (0점 아래로만 안 내려감)
       if(laneKey==='main') p.mainScore=next; else p.subScore=next;
       // 개인 전적 기록 (선수 정보창에 표시)
       if(won) p.wins=(p.wins||0)+1; else p.losses=(p.losses||0)+1;
@@ -947,7 +994,7 @@ function applyWin(winner){
   // 실시간 공유 중이면 MVP는 참가자 투표로, 아니면 진행자가 직접 선택
   if(startVote(winner)) battle.voteMode=true;
   refreshBattle(); renderBattle(); renderRoster();
-  toast(`${winner==='blue'?'1팀(블루)':'2팀(레드)'} 승리 반영 완료 — 점수가 조금 조정됐어요`);
+  toast(`${winner==='blue'?'1팀(블루)':'2팀(레드)'} 승리 반영 완료 — 승자 팀 ↑ 패자 팀 ↓ (최소 ±10)`);
 }
 function pickMvp(id){
   if(!battle||!battle.settled||battle.mvpDone)return;
@@ -1048,7 +1095,7 @@ function renderBattle(){
     }else if(battle.mvpId){
       mvpBlock=`<div class="mvp-done">🏆 POG/MVP — <b>${esc(battle.pm[battle.mvpId]?battle.pm[battle.mvpId].name:'')}</b> (명예 +10)</div>`;
     }
-    controls=`<div class="settled">🏆 ${w} 승리 반영됨 — 점수가 티어 범위 안에서 조정되었어요</div>
+    controls=`<div class="settled">🏆 ${w} 승리 반영됨 — 점수가 조정되었어요 (티어 표기는 그대로)</div>
       ${mvpBlock}
       <div class="winrow"><button class="btn ghost" id="undoWin">되돌리기</button></div>`;
   }
@@ -1340,10 +1387,14 @@ if(pModalBg){
 const dexModalBg=document.getElementById('dexModalBg');
 function openDex(){
   if(!dexModalBg)return;
+  const cats=Object.keys(TITLE_CATS);
   document.getElementById('dexBody').innerHTML=
-    `<p class="dex-intro">칭호는 내전 기록에 따라 <b>자동으로 획득/해제</b>됩니다. 선수 정보창에서 나만의 칭호도 직접 달아줄 수 있어요.</p>`
-    +`<div class="dex-list">`
-    +TITLE_DEFS.map(t=>`<div class="dex-row"><span class="tbadge" style="color:${t.c};border-color:${t.c}">${t.e}${esc(t.n)}</span><span class="cond">${esc(t.d)}</span></div>`).join('')
+    `<p class="dex-intro">칭호 ${TITLE_DEFS.length}종 — 내전 기록에 따라 <b>자동으로 획득/해제</b>됩니다. 선수 정보창에서 나만의 칭호도 직접 달아줄 수 있어요.</p>`
+    +cats.map(c=>
+      `<div class="dex-cat">${esc(TITLE_CATS[c])}</div><div class="dex-list">`
+      +TITLE_DEFS.filter(t=>t.cat===c).map(t=>`<div class="dex-row"><span class="tbadge" style="color:${t.c};border-color:${t.c}">${t.e}${esc(t.n)}</span><span class="cond">${esc(t.d)}</span></div>`).join('')
+      +`</div>`).join('')
+    +`<div class="dex-cat">기타</div><div class="dex-list">`
     +`<div class="dex-row"><span class="tbadge custom">🏷️사용자 지정</span><span class="cond">선수 정보창에서 직접 부여 (선수당 최대 4개)</span></div>`
     +`</div>`;
   dexModalBg.classList.add('open');
@@ -1380,6 +1431,136 @@ document.getElementById('importData').onclick=()=>{
     toast('명단을 불러왔어요');
   }catch(e){alert('형식이 올바르지 않아요. 백업한 JSON 텍스트를 그대로 붙여넣어 주세요.');}
 };
+
+//============ 엑셀 전적 가져오기 ============
+// 엑셀(이름·승·패 열)을 읽어 기존 명단 선수와 이름을 매칭 → 미리보기에서 확인 후 합산/덮어쓰기
+const xlsxModalBg=document.getElementById('xlsxModalBg');
+const xlsxFileEl=document.getElementById('xlsxFile');
+const xlsxBtnEl=document.getElementById('xlsxImportBtn');
+let ximpRows=[];   // {name, wins, losses, targetId|null}
+
+function loadSheetJS(){
+  return new Promise((res,rej)=>{
+    if(window.XLSX)return res();
+    const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.onload=()=>res(); s.onerror=()=>rej(new Error('SheetJS 로드 실패'));
+    document.head.appendChild(s);
+  });
+}
+// 이름 정규화 + 토큰: "Moondie(곽현희)" → ["moondie곽현희","moondie","곽현희"]
+function ximpNorm(s){return String(s).toLowerCase().replace(/[\s_\-·.]/g,'');}
+function ximpTokens(s){
+  const t=[ximpNorm(s)];
+  const m=String(s).match(/^(.*?)[（(]([^)）]*)[)）]/);
+  if(m){ if(m[1].trim())t.push(ximpNorm(m[1])); if(m[2].trim())t.push(ximpNorm(m[2])); }
+  return t.filter(x=>x.length>=1);
+}
+// 엑셀 이름 ↔ 명단 선수 매칭 점수 (3 완전일치 / 2 토큰일치 / 1 부분포함)
+function ximpMatchScore(excelName,p){
+  const a=ximpTokens(excelName), b=ximpTokens(p.name);
+  if(a[0]===b[0])return 3;
+  for(const x of a)for(const y of b){ if(x===y)return 2; }
+  for(const x of a)for(const y of b){
+    if(x.length>=2&&y.length>=2&&(x.includes(y)||y.includes(x)))return 1;
+  }
+  return 0;
+}
+function ximpBestMatch(excelName){
+  let best=null,bs=0,tie=false;
+  roster.forEach(p=>{
+    const s=ximpMatchScore(excelName,p);
+    if(s>bs){bs=s;best=p;tie=false;} else if(s===bs&&s>0)tie=true;
+  });
+  return (bs>=2||(bs===1&&!tie))?best:null;   // 애매하면 자동 매칭 안 함 (직접 선택)
+}
+// 시트에서 헤더 행(이름·승·패)을 찾아 행 목록으로 변환
+function ximpParseWorkbook(wb){
+  for(const name of wb.SheetNames){
+    const rows=XLSX.utils.sheet_to_json(wb.Sheets[name],{header:1,defval:''});
+    for(let hi=0;hi<Math.min(rows.length,10);hi++){
+      const h=rows[hi].map(c=>String(c).trim());
+      const iName=h.findIndex(c=>/이름|닉네임|선수/.test(c));
+      const iW=h.findIndex(c=>c==='승'||/^승(리|수)?$/.test(c));
+      const iL=h.findIndex(c=>c==='패'||/^패(배|수)?$/.test(c));
+      if(iName<0||iW<0||iL<0)continue;
+      const out=[];
+      for(let r=hi+1;r<rows.length;r++){
+        const nm=String(rows[r][iName]||'').trim(); if(!nm)continue;
+        const w=Math.max(0,parseInt(rows[r][iW],10)||0);
+        const l=Math.max(0,parseInt(rows[r][iL],10)||0);
+        out.push({name:nm,wins:w,losses:l});
+      }
+      if(out.length)return {sheet:name,rows:out};
+    }
+  }
+  return null;
+}
+function renderXimp(){
+  const body=document.getElementById('xlsxBody');
+  const opts=id=>`<option value="">— 건너뛰기 —</option>`
+    +roster.map(p=>`<option value="${p.id}"${p.id===id?' selected':''}>${esc(p.name)} (현재 ${p.wins||0}승 ${p.losses||0}패)</option>`).join('');
+  body.innerHTML=
+    `<p>엑셀에서 <b>${ximpRows.length}명</b>의 전적을 찾았어요. 어떤 선수에게 반영할지 확인하고 적용을 누르세요. 이름이 달라 자동 매칭이 안 된 행은 직접 골라주세요.</p>`
+    +`<div class="ximp-mode">
+       <label><input type="radio" name="ximpMode" value="add" checked> <b>합산</b> — 기존 전적에 엑셀 승·패를 더함</label>
+       <label><input type="radio" name="ximpMode" value="set"> <b>덮어쓰기</b> — 엑셀 값으로 교체</label>
+     </div>`
+    +`<div class="ximp-list">`
+    +ximpRows.map((r,i)=>`<div class="ximp-row">
+        <span class="xn" title="${esc(r.name)}">${esc(r.name)}</span>
+        <span class="xr">${r.wins}승 ${r.losses}패</span>
+        <select data-xi="${i}">${opts(r.targetId)}</select>
+      </div>`).join('')
+    +`</div>
+     <div class="btn-row">
+       <button class="btn solid" id="ximpApply">적용</button>
+       <button class="btn ghost" id="ximpCancel">취소</button>
+     </div>`;
+  body.querySelectorAll('select[data-xi]').forEach(sel=>{
+    sel.onchange=()=>{ximpRows[+sel.dataset.xi].targetId=sel.value||null;};
+  });
+  document.getElementById('ximpCancel').onclick=()=>xlsxModalBg.classList.remove('open');
+  document.getElementById('ximpApply').onclick=applyXimp;
+}
+function applyXimp(){
+  const mode=(document.querySelector('input[name="ximpMode"]:checked')||{}).value||'add';
+  const picked=ximpRows.filter(r=>r.targetId);
+  if(!picked.length){toast('반영할 선수를 선택해 주세요');return;}
+  const dup=picked.map(r=>r.targetId).filter((v,i,a)=>a.indexOf(v)!==i);
+  if(dup.length&&!confirm('같은 선수에게 여러 행이 매칭돼 있어요. 그대로 진행할까요? (합산이면 모두 더해집니다)'))return;
+  let n=0;
+  picked.forEach(r=>{
+    const p=roster.find(x=>x.id===r.targetId); if(!p)return;
+    if(mode==='set'){ p.wins=r.wins; p.losses=r.losses; }
+    else { p.wins=(p.wins||0)+r.wins; p.losses=(p.losses||0)+r.losses; }
+    n++;
+  });
+  persist(); renderRoster();
+  xlsxModalBg.classList.remove('open');
+  toast(`엑셀 전적 ${mode==='set'?'덮어쓰기':'합산'} 완료 — ${n}명 반영 (${ximpRows.length-n}명 건너뜀)`);
+}
+if(xlsxBtnEl&&xlsxFileEl&&xlsxModalBg){
+  xlsxBtnEl.onclick=()=>{
+    if(!roster.length){alert('먼저 「선수 명단」에 선수를 등록해 주세요.\n엑셀 가져오기는 등록된 선수의 승·패 기록만 채워 넣는 기능이에요.');return;}
+    xlsxFileEl.value=''; xlsxFileEl.click();
+  };
+  xlsxFileEl.onchange=async()=>{
+    const f=xlsxFileEl.files&&xlsxFileEl.files[0]; if(!f)return;
+    toast('엑셀을 읽는 중…');
+    try{
+      await loadSheetJS();
+      const buf=await f.arrayBuffer();
+      const wb=XLSX.read(buf,{type:'array'});
+      const parsed=ximpParseWorkbook(wb);
+      if(!parsed){alert('이름·승·패 열을 찾지 못했어요.\n첫 행(머리글)에 「이름」「승」「패」가 있는 시트인지 확인해 주세요.');return;}
+      ximpRows=parsed.rows.map(r=>{const m=ximpBestMatch(r.name);return {...r,targetId:m?m.id:null};});
+      renderXimp();
+      xlsxModalBg.classList.add('open');
+    }catch(e){alert('엑셀을 읽지 못했어요: '+(e&&e.message||e));}
+  };
+  xlsxModalBg.onclick=e=>{if(e.target===xlsxModalBg)xlsxModalBg.classList.remove('open');};
+}
 
 //============ init ============
 (function init(){
