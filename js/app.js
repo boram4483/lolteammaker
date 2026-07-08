@@ -191,12 +191,11 @@ const UNDO_KEY='lol_inhouse_undo_v1';
 let undoStack=[];                   // 승리 되돌리기 — localStorage에 저장해 새로고침해도 유지
 try{ undoStack=JSON.parse(localStorage.getItem(UNDO_KEY)||'[]')||[]; }catch(e){ undoStack=[]; }
 function persistUndo(){ try{ localStorage.setItem(UNDO_KEY,JSON.stringify(undoStack.slice(-5))); }catch(e){} }
-// 승패 점수 변동 계수 — 모든 티어 동일 (티어별 차등 없음).
-// 팽팽한 경기(기대승률 50%)면 ±25, 언더독 승리는 최대 +40대, 어떤 경우에도 최소 ±10 보장.
-// D=1000: 점수차가 커도 기대승률이 천천히 포화 → 고티어에서도 변동 폭이 쪼그라들지 않음.
-function eloParams(tierKey){
-  return {K:50, D:1000, minStep:10};
-}
+// 승패 점수 변동 — 모든 티어 동일 (티어별 차등 없음).
+// 이기면 무조건 +30, 지면 무조건 -30.
+// 단, 팀 평균 점수가 낮은 쪽(언더독)이 이기면 +10 보너스 → +40.
+const WIN_DELTA=30;        // 기본 변동 폭 (승 +30 / 패 -30)
+const UNDERDOG_BONUS=10;   // 밸런스 낮은 팀이 이겼을 때 추가 점수
 let balanceTol=30;                  // 밸런스 허용 점수차 (수동 조절 가능)
 let mixLevel=4;                     // 부라인 섞기: 0 주라인만 / 2 조금 / 4 골고루 / 10 자유
 const MIX_W={0:1e6,2:100,4:25,10:0}; // 부라인 1명당 점수차 환산 패널티 (팀 구성 선택 시)
@@ -298,7 +297,7 @@ document.querySelectorAll('.tol-presets button[data-mix]').forEach(b=>b.onclick=
     const rg = t.div ? `${lo}–${tierBase(t.key)+399}` : `${lo}–${hi} · LP 입력`;
     return `<div class="lg-row"><span class="nm" style="color:${t.color}">${t.name}</span><span class="rg">${rg}</span></div>`;
   }).join('')
-  +`<div class="lg-note">※ 위 점수는 <b>등록 시 시작점</b>이에요. 승패에 따라 점수는 범위 밖으로도 자유롭게 오르내리지만, 표시되는 티어는 등록한 그대로 유지됩니다. (한 판당 변동 폭: 팽팽하면 ±25 안팎, 최소 ±10)</div>`;
+  +`<div class="lg-note">※ 위 점수는 <b>등록 시 시작점</b>이에요. 승패에 따라 점수는 범위 밖으로도 자유롭게 오르내리지만, 표시되는 티어는 등록한 그대로 유지됩니다. (한 판당 변동 폭: 승 +30 / 패 -30 고정, 밸런스 낮은 팀이 이기면 +40)</div>`;
 })();
 
 //============ tabs ============
@@ -993,17 +992,17 @@ function applyWin(winner){
   const rosterBefore=JSON.parse(JSON.stringify(roster));
   const bAvg=battle.blue.reduce((s,r)=>s+r.score,0)/5;
   const rAvg=battle.red.reduce((s,r)=>s+r.score,0)/5;
+  // 언더독 판정: 팀 평균 점수가 낮은 쪽. 평균이 같으면 보너스 없음.
+  const underdog = bAvg<rAvg ? 'blue' : rAvg<bAvg ? 'red' : null;
+  const underdogWon = underdog!==null && underdog===winner;
   const snap=[];
   function adj(rows,oppAvg,won){
     rows.forEach(r=>{
       const p=roster.find(x=>x.id===r.id); if(!p)return;
       const laneKey = r.role==='sub'?'sub' : r.role==='main'?'main' : (p.mainScore<=p.subScore?'main':'sub');
       const cur = laneKey==='main'?p.mainScore:p.subScore;
-      const tierKey = laneKey==='main'?p.mainTier:p.subTier;
-      const {K,D,minStep}=eloParams(tierKey);          // 티어별 계수 (마스터+는 크게)
-      const E=1/(1+Math.pow(10,(oppAvg-cur)/D));
-      let d=Math.round(K*((won?1:0)-E));
-      if(won&&d<minStep)d=minStep; if(!won&&d>-minStep)d=-minStep;  // 이기면 최소 +minStep, 지면 최소 -minStep
+      // 고정 변동: 승 +30 / 패 -30, 언더독 팀이 이기면 +40 (모든 티어 동일)
+      const d = won ? WIN_DELTA + (underdogWon?UNDERDOG_BONUS:0) : -WIN_DELTA;
       snap.push({id:p.id,lane:laneKey,prev:cur,w:p.wins||0,l:p.losses||0});
       const next=Math.max(0,Math.round(cur+d)); // 티어 범위 제한 없음 (0점 아래로만 안 내려감)
       if(laneKey==='main') p.mainScore=next; else p.subScore=next;
@@ -1025,7 +1024,7 @@ function applyWin(winner){
   if(startVote(winner)) battle.voteMode=true;
   refreshBattle(); renderBattle(); renderRoster();
   if(window.__fx)window.__fx.burst(winner);   // 🎆 승리의 골드 폭죽
-  toast(`${winner==='blue'?'1팀(블루)':'2팀(레드)'} 승리 반영 완료 — 승자 팀 ↑ 패자 팀 ↓ (최소 ±10)`);
+  toast(`${winner==='blue'?'1팀(블루)':'2팀(레드)'} 승리 반영 완료 — 승자 +${WIN_DELTA+(underdogWon?UNDERDOG_BONUS:0)} / 패자 -${WIN_DELTA}${underdogWon?' (언더독 승리 보너스 +10!)':''}`);
 }
 function pickMvp(id){
   if(!battle||!battle.settled||battle.mvpDone)return;
