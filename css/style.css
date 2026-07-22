@@ -1079,3 +1079,47 @@ header.site h1{
   .btn:hover::after{animation:btnSheen .65s ease}
   .lbrow:hover{transform:translateY(-2px)}
 }
+
+/* ============ 팀 빌더 선수 검색 ============ */
+.pick-search{
+  width:190px;max-width:100%;padding:8px 12px;font-size:13px;
+  background:#0a141d;border:1px solid var(--line);color:var(--text);
+  border-radius:8px;font-family:inherit;
+}
+.pick-search::placeholder{color:var(--text-mute)}
+.pick-search:focus{border-color:var(--gold);box-shadow:0 0 0 1px rgba(200,170,110,.25);outline:none}
+.pick-search::-webkit-search-cancel-button{cursor:pointer}
+@media (max-width:600px){
+  .pick-search{width:100%;order:5}
+}
+
+/* ============ 라인 변경 메뉴 (팀 결과 화면) ============ */
+.prow .lico.lanebtn{
+  background:transparent;border:1px solid transparent;cursor:pointer;padding:0;
+  border-radius:8px;transition:border-color .15s,background .15s,box-shadow .15s;
+}
+.prow .lico.lanebtn:hover,.prow .lico.lanebtn.on{
+  border-color:var(--gold-dim);background:rgba(200,170,110,.1);
+  color:var(--gold-bright);box-shadow:0 0 8px rgba(200,170,110,.25);
+}
+.lane-menu{
+  border-bottom:1px solid var(--line-soft);background:#08121b;
+  padding:9px;display:grid;gap:4px;animation:laneMenuIn .16s ease;
+}
+@keyframes laneMenuIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+.lane-menu .lm-title{font-size:11px;color:var(--gold);font-weight:700;padding:2px 4px 5px}
+.lane-menu .lm-title span{color:var(--text-mute);font-weight:400;margin-left:7px}
+.lane-menu button{
+  display:flex;align-items:center;gap:10px;width:100%;padding:7px 10px;
+  background:transparent;border:1px solid var(--line-soft);border-radius:8px;
+  color:var(--text);cursor:pointer;text-align:left;font-family:inherit;font-size:13px;
+  transition:border-color .12s,background .12s;
+}
+.lane-menu button:hover:not(:disabled){border-color:var(--gold-dim);background:rgba(200,170,110,.07)}
+.lane-menu button:disabled{opacity:.45;cursor:default}
+.lane-menu .lmi{display:flex;color:var(--gold);flex:none}
+.lane-menu .lmi svg{width:17px;height:17px}
+.lane-menu .lmt{flex:1;min-width:0;display:flex;align-items:baseline;gap:8px}
+.lane-menu .lmt b{font-size:12.5px;color:var(--gold-bright)}
+.lane-menu .lmt i{font-style:normal;font-size:10.5px;color:var(--text-mute);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lane-menu .lmr{font-size:10px;font-weight:700;padding:2px 6px;border:1px solid;border-radius:3px;flex:none}

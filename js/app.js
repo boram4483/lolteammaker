@@ -187,6 +187,8 @@ function persistHistory(){ try{ localStorage.setItem('lol_round_hist',JSON.strin
 const HISTORY_MAX=5;
 let battle=null;                    // 현재 결과 {blue, red, pm, settled}
 let swapPick=null;                  // 수동 교체용 선택중인 선수
+let laneMenuFor=null;               // 라인 변경 메뉴가 열린 선수 id
+let pickQuery='';                   // 팀 빌더 선수 검색어
 const UNDO_KEY='lol_inhouse_undo_v1';
 let undoStack=[];                   // 승리 되돌리기 — localStorage에 저장해 새로고침해도 유지
 try{ undoStack=JSON.parse(localStorage.getItem(UNDO_KEY)||'[]')||[]; }catch(e){ undoStack=[]; }
@@ -669,8 +671,14 @@ function renderPickGrid(){
   }
   cleanPairs();
   g.classList.toggle('pairmode',pairMode);
-  // 참가자 선택 그리드도 ㄱㄴㄷ 순 (찾기 쉽게)
-  g.innerHTML=[...roster].sort(nameCmp).map(p=>{
+  // 참가자 선택 그리드도 ㄱㄴㄷ 순 (찾기 쉽게) + 검색 필터
+  const nq=pickQuery.trim()?ximpNorm(pickQuery):'';
+  const shown=[...roster].sort(nameCmp).filter(p=>!nq||ximpNorm(p.name).includes(nq));
+  if(nq&&shown.length===0){
+    g.innerHTML=`<div class="empty-hint" style="grid-column:1/-1">『${esc(pickQuery.trim())}』 검색 결과가 없어요.</div>`;
+    renderPairBox(); renderUndoBar(); updateSelCount(); return;
+  }
+  g.innerHTML=shown.map(p=>{
     const pi=pairIndexOf(p.id);
     const pc=pi>=0?PAIR_COLORS[pi%PAIR_COLORS.length]:'';
     const ptag=pi>=0?`<span class="pairtag" style="color:${pc};border-color:${pc}">🔗${pi+1}</span>`:'';
@@ -736,6 +744,28 @@ function renderPairBox(){
 function updateSelCount(){
   document.getElementById('selCount').textContent=selected.size;
   document.getElementById('makeBtn').disabled=(selected.size!==10);
+}
+// ---- 팀 빌더 선수 검색 ----
+const pickSearchEl=document.getElementById('pickSearch');
+if(pickSearchEl){
+  pickSearchEl.oninput=()=>{ pickQuery=pickSearchEl.value; renderPickGrid(); };
+  pickSearchEl.onkeydown=e=>{
+    if(e.key==='Escape'){ pickQuery=''; pickSearchEl.value=''; renderPickGrid(); return; }
+    if(e.key!=='Enter')return;
+    e.preventDefault();
+    const nq=pickQuery.trim()?ximpNorm(pickQuery):'';
+    if(!nq)return;
+    if(pairMode){toast('묶기 모드에서는 카드를 직접 클릭해주세요');return;}
+    const hits=[...roster].sort(nameCmp).filter(p=>ximpNorm(p.name).includes(nq));
+    if(hits.length===0){toast('검색 결과가 없어요');return;}
+    const target=hits.find(p=>!selected.has(p.id));
+    if(!target){toast('검색된 선수는 이미 모두 선택돼 있어요');return;}
+    if(selected.size>=10){toast('이미 10명을 선택했어요 — 먼저 한 명을 해제하세요');return;}
+    selected.add(target.id);
+    pickQuery=''; pickSearchEl.value='';
+    renderPickGrid();
+    toast(`${target.name} 선택! (${selected.size}/10)`);
+  };
 }
 document.getElementById('clearSel').onclick=()=>{
   selected.clear(); pairs=[]; persistPairs(); pairBuf=null; battle=null;
@@ -949,6 +979,7 @@ function makeBattle(){
     settled:false,
   };
   swapPick=null;
+  laneMenuFor=null;
   renderBattle();
   renderUndoBar();
 }
@@ -978,10 +1009,44 @@ function doSwap(idA,idB){
 }
 function onRowClick(id){
   if(!battle||battle.settled)return;
+  laneMenuFor=null;
   if(swapPick===null){ swapPick=id; }
   else if(swapPick===id){ swapPick=null; }
   else { doSwap(swapPick,id); swapPick=null; }
   renderBattle();
+}
+// 같은 팀 안에서 라인만 맞바꾸기 — 대상 라인의 팀원과 서로 교체
+function setLane(id,lane){
+  if(!battle||battle.settled)return;
+  const f=findRow(id); if(!f)return;
+  laneMenuFor=null;
+  if(f.row.pos===lane){ renderBattle(); return; }
+  const other=battle[f.team].find(r=>r.pos===lane&&r.id!==id);
+  const oldPos=f.row.pos;
+  f.row.pos=lane;
+  if(other) other.pos=oldPos;
+  [f.row,other].forEach(r=>{ if(!r)return; const rs=roleScore(battle.pm[r.id],r.pos); r.role=rs.role; r.score=rs.score; });
+  swapPick=null;
+  renderBattle();
+  if(other) toast(`${battle.pm[id].name} ↔ ${battle.pm[other.id].name} 라인 교체`);
+}
+function laneMenuHTML(r){
+  const f=findRow(r.id); if(!f)return '';
+  const p=battle.pm[r.id];
+  const items=LANES.map(l=>{
+    const cur=l.key===r.pos;
+    const occ=battle[f.team].find(x=>x.pos===l.key&&x.id!==r.id);
+    const rs=roleScore(p,l.key);
+    const roleCls=rs.role==='main'?'m':rs.role==='sub'?'s':'a';
+    const roleTxt=rs.role==='main'?'주':rs.role==='sub'?'부':'자동';
+    const sub=cur?'현재 라인':(occ?`↔ ${esc(battle.pm[occ.id].name)}`:'빈 라인');
+    return `<button type="button" data-setlane="${l.key}"${cur?' disabled':''}>
+      <span class="lmi">${laneSVG(l.key)}</span>
+      <span class="lmt"><b>${l.name}</b><i>${sub}</i></span>
+      <span class="lmr rl ${roleCls}">${roleTxt} ${rs.score}</span>
+    </button>`;
+  }).join('');
+  return `<div class="lane-menu" data-for="${r.id}"><div class="lm-title">${esc(p.name)} — 라인 변경<span>같은 팀 안에서 서로 라인을 맞바꿔요</span></div>${items}</div>`;
 }
 
 // 승리 반영: 친 라인의 점수만 변동. 점수는 티어 범위 제한 없이 자유롭게 오르내리지만
@@ -1082,14 +1147,18 @@ function teamPanel(cls,label,rows){
     const picked = swapPick===r.id?' picked':'';
     const sw = battle.settled?'':' swappable';
     const drag = battle.settled?'':' draggable="true"';
+    const laneBtn = battle.settled
+      ? `<span class="lico">${laneSVG(r.pos)}</span>`
+      : `<button type="button" class="lico lanebtn${laneMenuFor===r.id?' on':''}" data-laneof="${r.id}" draggable="false" title="라인 변경">${laneSVG(r.pos)}</button>`;
+    const menu = (!battle.settled&&laneMenuFor===r.id)?laneMenuHTML(r):'';
     return `<div class="prow${sw}${picked}" data-id="${r.id}"${drag}>
-      <span class="lico">${laneSVG(r.pos)}</span>
+      ${laneBtn}
       <span class="pmain">
         <span class="top"><span class="rl ${roleCls}">${roleTxt}</span><span class="nm">${esc(p.name)}</span></span>
         <span class="bot">${LANE_NAME[r.pos]} · ${scoreBadge(tierKey,r.score)}</span>
       </span>
       <span class="pscore">${r.score}</span>
-    </div>`;
+    </div>${menu}`;
   }).join('');
   return {html:`<div class="team ${cls}"><div class="thead"><span class="tname">${label}</span><span class="ttot">TEAM MMR : ${total}</span></div><div class="tbody">${body}</div></div>`, total};
 }
@@ -1129,7 +1198,7 @@ function renderBattle(){
       ${mvpBlock}
       <div class="winrow"><button class="btn ghost" id="undoWin">되돌리기</button></div>`;
   }
-  const swapHint = battle.settled?'':'<div class="swap-hint">선수를 클릭(또는 드래그)해 위치를 맞바꿀 수 있어요</div>';
+  const swapHint = battle.settled?'':'<div class="swap-hint">선수를 클릭(또는 드래그)하면 두 선수의 자리를 통째로 맞바꾸고 · <b>라인 아이콘</b>을 누르면 같은 팀 안에서 라인만 바꿔요</div>';
   const pairNote = (battle.pairsApplied&&battle.pairsApplied.length)?`<div class="pair-note">🔗 같은 팀 고정 적용 — ${battle.pairsApplied.map(pr=>pr.map(esc).join(' + ')).join(' · ')}</div>`:'';
   const autoNote = auto>0?`<div class="auto-note">⚠ 주·부 라인에 없는 포지션은 자동으로 배치했어요(자동 ${auto}명, 점수 ×0.8 보정). 예: 서폿 가능자가 부족하면 누군가 서폿으로 자동 배치돼요.</div>`:'';
   const histLink = roundHistory.length>1?`<button class="minilink" id="resetHistory">섞기 기록 초기화 (최근 ${roundHistory.length}판 기억 중)</button>`:'';
@@ -1157,6 +1226,15 @@ function renderBattle(){
   </div>`;
 
   // bind
+  res.querySelectorAll('.lanebtn').forEach(b=>{
+    b.onclick=e=>{ e.stopPropagation(); const id=b.dataset.laneof;
+      laneMenuFor = laneMenuFor===id?null:id; swapPick=null; renderBattle(); };
+    b.ondragstart=e=>e.preventDefault();
+  });
+  res.querySelectorAll('.lane-menu').forEach(m=>{
+    m.onclick=e=>e.stopPropagation();
+    m.querySelectorAll('[data-setlane]').forEach(b=>b.onclick=e=>{e.stopPropagation();setLane(m.dataset.for,b.dataset.setlane);});
+  });
   res.querySelectorAll('.prow.swappable').forEach(el=>{
     el.onclick=()=>onRowClick(el.dataset.id);
     el.ondragstart=e=>{e.dataTransfer.setData('text/plain',el.dataset.id);el.classList.add('dragging');};
